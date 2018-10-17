@@ -17,26 +17,32 @@ def assert_exists(loc):
         return False
     return True
 
-UUID = "NA12878.hg38.{read0}.{chr}.pec_hmm.{sub}.{ptype}"
+UUID = "HG002.hs37d5.{read0}.chr{chr}"
 BAM = ""
 CHR = "{chr}"
-FA = "s3://margin-phase/fasta/hg38.{chr}.fa"
-PARAMS = "s3://margin-phase/params/pecan/params.{read1}.{sub}.{ptype}.pec_hmm_2.json"
-VCF = "s3://margin-phase/vcf/NA12878.hg38.PG.{chr}.vcf"
+FA = "s3://margin-phase/fasta/hs37d5.{chr}.fa"
+# PARAMS = "s3://margin-phase/params/pecan/params.{read1}.{sub}.{ptype}.pec_hmm_2.json"
+PARAMS = "s3://margin-phase/params/final/params.pacbio.181009.json"
 
 reads = [
-    ['np2-q0', 'np', 's3://margin-phase/bam/nanopore2/NA12878.hg38.np2.{chr}.bam'],
-    ['pb-q0', 'pb', 's3://margin-phase/bam/realigned/NA12878.hg38.pb.mm.{chr}.bam'],
+    ['pb', 'pb', 's3://margin-phase/bam/hg002/hs37d5.pb/HG002.Q20.hs37d5.pbmm2.MAPQ60.chr{chr}.bam'],
+    # ['np2-q0', 'np', 's3://margin-phase/bam/nanopore2/NA12878.hg38.np2.{chr}.bam'],
+    # ['pb-q0', 'pb', 's3://margin-phase/bam/realigned/NA12878.hg38.pb.mm.{chr}.bam'],
     # ['np2-q30', 'np', 's3://margin-phase/bam/nanopore2.q30/NA12878.hg38.np2.q30.{chr}.bam'],
     # ['pb-q30', 'pb', 's3://margin-phase/bam/pacbio.q30/NA12878.hg38.pb.mm.q30.{chr}.bam'],
 #     ['np2-q30nsu', 'np', 's3://margin-phase/bam/nanopore2.q30nsu/NA12878.hg38.np2.q30nsu.{chr}.bam'],
 #     ['pb-q30nsu', 'pb', 's3://margin-phase/bam/pacbio.q30nsu/NA12878.hg38.pb.mm.q30nsu.{chr}.bam'],
 ]
 
+chrs = ["{}".format(x) for x in range(1,23)]
+chrs.append("X")
+# chrs.append("chrY")
+# chrs = ['chr6']
+
 # chrs = ["chr{}".format(x) for x in range(1,23)]
 # chrs.append("chrX")
 # chrs.append("chrY")
-chrs = ['chr6']
+# chrs = ['chr6']
 
 # subs = ['998', '9995']
 # subs = ['9995']
@@ -61,9 +67,8 @@ for read in reads:
                 chr = CHR.format(chr=chr)
                 fa = FA.format(chr=chr)
                 params = PARAMS.format(read1=read[1], sub=sub, ptype=ptype)
-                vcf = VCF.format(chr=chr)
 
-                sample = [uuid, bam, chr, fa, params, vcf]
+                sample = [uuid, bam, chr, fa, params]
                 print("\t".join(sample))
                 for s in sample:
                     have_everything = have_everything and assert_exists(s)

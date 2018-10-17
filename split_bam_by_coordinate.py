@@ -6,6 +6,8 @@ import os
 import subprocess
 import sys
 
+import bam_stats
+
 
 
 CHR = "c"
@@ -23,6 +25,8 @@ def parse_args():
                        help='Location where output files are put')
     parser.add_argument('--description_column', '-d', dest='description_column', default=None, type=int,
                        help='0-based index of description field in TSV (not required)')
+    parser.add_argument('--produce_bam_stats', '-s', dest='produce_bam_stats', default=False, action='store_true',
+                       help='produce bam_stats output afterwards')
 
     return parser.parse_args()
 
@@ -35,7 +39,7 @@ def get_output_filename(input_file_location, output_directory, coordinates):
                                             coordinates[END])
     if coordinates[DESC] is not None:
         output_file_name += "." + coordinates[DESC]
-    output_file_name += "." + input_file_parts[-1]
+    output_file_name += ".bam"
     return os.path.join(output_directory, output_file_name)
 
 
@@ -66,6 +70,12 @@ def main():
             samtools_args = ['samtools', 'view', '-hb', file, "{}:{}-{}".format(coord[CHR], coord[START], coord[END])]
             with open(outfile, 'w') as output:
                 subprocess.check_call(samtools_args, stdout=output)
+            subprocess.check_call(['samtools', 'index', outfile])
+            if args.produce_bam_stats:
+                stats_outfile = "{}.stats.txt".format(outfile)
+                bam_stats_args = ['-i', outfile, '-g', '-l', '-d', '-v', '-o', stats_outfile,
+                                  '-r', '{}-{}'.format(coord[START], coord[END])]
+                bam_stats.main(bam_stats_args)
 
     print("Fin.", file=sys.stderr)
 

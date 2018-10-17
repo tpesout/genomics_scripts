@@ -170,7 +170,7 @@ def write_to_depth_summary_bedfile(depth_map, chromosome, output, args):
     def write_bedline(block_start, block_end, block_min):
         start_idx = block_start * spacing
         end_idx = (block_end + 1) * spacing
-        output.write("{}\t{}\t{}\t{}:{}\n".format(chromosome, start_idx, end_idx, MIN_DEPTH_PARAM,block_min))
+        output.write("{}\t{}\t{}\t{}\n".format(chromosome, start_idx, end_idx, block_min))
 
     # iterate over blocks
     for idx in range(min_idx, max_idx + 1):
