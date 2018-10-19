@@ -28,10 +28,13 @@ def parse_args():
     parser.add_argument('--produce_bam_stats', '-s', dest='produce_bam_stats', default=False, action='store_true',
                        help='produce bam_stats output afterwards')
 
+    parser.add_argument('--flag_by_depth', dest='min_depth_threshold', default=None, action='store', type=int,
+                       help='Will flag output if mean or median depth exceeds this threshold')
+
     return parser.parse_args()
 
 
-def get_output_filename(input_file_location, output_directory, coordinates):
+def get_output_filename(input_file_location, coordinates):
 
     input_file_name = os.path.basename(input_file_location)
     input_file_parts = input_file_name.split(".")
@@ -40,7 +43,7 @@ def get_output_filename(input_file_location, output_directory, coordinates):
     if coordinates[DESC] is not None:
         output_file_name += "." + coordinates[DESC]
     output_file_name += ".bam"
-    return os.path.join(output_directory, output_file_name)
+    return output_file_name
 
 
 def main():
@@ -64,18 +67,54 @@ def main():
 
     for file in glob.glob(args.input_bam_glob):
         for coord in coords:
-            outfile = get_output_filename(file, args.output_location, coord)
+            out_filename = get_output_filename(file, coord)
+            out_location = os.path.join(args.output_location, out_filename)
+
             print("{}:\n\tloc:  {}:{}-{}\n\tdesc: {}\n\tout:  {}".format(file, coord[CHR], coord[START], coord[END],
-                                                                         coord[DESC], outfile), file=sys.stderr)
+                                                                         coord[DESC], out_location), file=sys.stderr)
             samtools_args = ['samtools', 'view', '-hb', file, "{}:{}-{}".format(coord[CHR], coord[START], coord[END])]
-            with open(outfile, 'w') as output:
+            with open(out_location, 'w') as output:
                 subprocess.check_call(samtools_args, stdout=output)
-            subprocess.check_call(['samtools', 'index', outfile])
+            subprocess.check_call(['samtools', 'index', out_location])
             if args.produce_bam_stats:
-                stats_outfile = "{}.stats.txt".format(outfile)
-                bam_stats_args = ['-i', outfile, '-g', '-l', '-d', '-v', '-o', stats_outfile,
+                stats_filename = "{}.stats.txt".format(out_filename)
+                stats_location = os.path.join(args.output_location, stats_filename)
+                bam_stats_args = ['-i', out_location, '-g', '-l', '-d', '-v', '-o', stats_location,
                                   '-r', '{}-{}'.format(coord[START], coord[END])]
-                bam_stats.main(bam_stats_args)
+                generic_summaries, _, depth_summaries = bam_stats.main(bam_stats_args)
+
+                # are we flagging output based on depth?
+                if args.min_depth_threshold is not None:
+                    generic_summary = generic_summaries[out_location][bam_stats.GENOME_KEY]
+                    depth_summary = depth_summaries[out_location][bam_stats.GENOME_KEY]
+                    depth_summary_value = int(max(depth_summary[bam_stats.D_MED], depth_summary[bam_stats.D_AVG]))
+                    print("\tsection_depth:{}".format(depth_summary_value), file=sys.stderr)
+                    if args.min_depth_threshold <= depth_summary_value:
+                        print("\tFLAGGED!", file=sys.stderr)
+                        # also try to get stats for only primary reads
+                        bam_stats_args_prim = ['-i', out_location, '-d', '-V', '--filter_secondary',
+                                               '--filter_supplementary', '-r', '{}-{}'.format(coord[START], coord[END])]
+                        _, _, prim_depth_summaries = bam_stats.main(bam_stats_args_prim)
+                        prim_depth_summary = prim_depth_summaries[out_location][bam_stats.GENOME_KEY]
+                        prim_depth_summary_value = int(max(prim_depth_summary[bam_stats.D_MED],
+                                                           prim_depth_summary[bam_stats.D_AVG]))
+
+                        # document depths in flagged filename
+                        flag_filename = "FLAGGED.DEPTH_{:04d}_p{:04d}.{}.stats.txt".format(
+                            depth_summary_value, prim_depth_summary_value, out_filename)
+                        with open(os.path.join(args.output_location, flag_filename), 'w') as flag_out:
+                            print("####################################", file=flag_out)
+                            print("bam_file:{}".format(out_filename), file=flag_out)
+                            print("bam_stats_file:{}".format(stats_filename), file=flag_out)
+                            print("depth_threshold:{}".format(args.min_depth_threshold), file=flag_out)
+                            print("median_depth:{}".format(depth_summary[bam_stats.D_MED]), file=flag_out)
+                            print("mean_depth:{}".format(depth_summary[bam_stats.D_AVG]), file=flag_out)
+                            print("total_reads:{}".format(generic_summary[bam_stats.B_READ_COUNT]), file=flag_out)
+                            print("filtered_reads:{}".format(
+                                generic_summary[bam_stats.B_SECONDARY_COUNT] + generic_summary[bam_stats.B_SUPPLEMENTARY_COUNT]),
+                                file=flag_out)
+                            print("primary_median_depth:{}".format(prim_depth_summary[bam_stats.D_MED]), file=flag_out)
+                            print("primary_mean_depth:{}".format(prim_depth_summary[bam_stats.D_AVG]), file=flag_out)
 
     print("Fin.", file=sys.stderr)
 

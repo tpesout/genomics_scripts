@@ -26,6 +26,7 @@ COVERAGE_BEDS = [
     # 'np_noreadfilt_gte5.bed',
     'uni_gte1.bed',
     # 'uni_gte5.bed',
+    'pb_ccs_gte1.bed',
     'pb_gte1.bed',
     'np_gte1.bed',
     # 'pb_gte5_lt92.bed',
@@ -105,6 +106,7 @@ BED_INFO = {
 
     'uni_gte1.bed': ['Long Read Mappable', '#FF0F3F'],
     'pb_gte1.bed': ['PacBio Mappable', '#CF2F0F'],
+    'pb_ccs_gte1.bed': ['PacBio CCS Mappable', '#CF2F0F'],
     'np_gte1.bed': ['Nanopore Mappable', '#CF0F3F'],
     'int_gte10_lt2xm.bed': ['Long Read Callable', '#9F0F3F'],
     'giab_high_conf.bed': ['GIAB High Confidence', '#0F0F9F'],

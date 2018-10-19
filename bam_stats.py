@@ -58,7 +58,7 @@ GENOME_KEY = "genome"
 LENGTH_LOG_BASE_DEFAULT=2
 LENGTH_LOG_BASE_ALT=10
 LENGTH_LOG_MAX_DEFAULT=32
-percent = lambda small, big: int(100.0 * small / big)
+percent = lambda small, big: int(100.0 * small / big) if big != 0 else 0.0
 
 
 def parse_args(args = None):
@@ -143,12 +143,12 @@ def get_read_length_summary(read_summaries, length_log_base=LENGTH_LOG_BASE_DEFA
     summary = {
         L_LOG_LENGTH_BUCKETS: log_length_bins,
         L_LOG_LENGTH_BUCKETS_ALT: log_lenght_alt_bins,
-        L_MAX: max(all_lengths),
-        L_MIN: min(all_lengths),
-        L_AVG: np.mean(all_lengths),
-        L_MED: np.median(all_lengths),
-        L_STD: np.std(all_lengths),
-        L_N50: caluclate_n50(all_lengths),
+        L_MAX: max(all_lengths) if len(all_lengths) != 0 else 0,
+        L_MIN: min(all_lengths) if len(all_lengths) != 0 else 0,
+        L_AVG: np.mean(all_lengths) if len(all_lengths) != 0 else 0,
+        L_MED: np.median(all_lengths) if len(all_lengths) != 0 else 0,
+        L_STD: np.std(all_lengths) if len(all_lengths) != 0 else 0,
+        L_N50: caluclate_n50(all_lengths) if len(all_lengths) != 0 else 0,
         L_LOG_BASE: length_log_base,
         L_LOG_BASE_ALT: length_log_base_alt,
         L_LOG_MAX: length_log_max,
@@ -206,8 +206,12 @@ def print_generic_read_stats(summary, output, verbose=False, genome_only=False):
 
 
 def print_log_binned_data(log_bins, output, indent_count=3):
-    max_bucket = max(list(filter(lambda x: log_bins[x] != 0, [x for x in range(len(log_bins))])))
-    min_bucket = min(list(filter(lambda x: log_bins[x] != 0, [x for x in range(len(log_bins))])))
+    extant_log_bins = list(filter(lambda x: log_bins[x] != 0, [x for x in range(len(log_bins))]))
+    if len(extant_log_bins) != 0:
+        print("{} [No Data]".format('\t'*indent_count), file=output)
+        return
+    max_bucket = max(extant_log_bins)
+    min_bucket = min(extant_log_bins)
     max_bucket_size = max(log_bins)
     total_bucket_size = sum(log_bins)
     total_bucket_size_left = total_bucket_size
@@ -364,11 +368,11 @@ def get_genome_depth_summary(summaries):
         depths.extend(summary[D_ALL_DEPTHS])
 
     summary = {
-        D_MAX: max(depths),
-        D_MIN: min(depths),
-        D_MED: np.median(depths),
-        D_AVG: np.mean(depths),
-        D_STD: np.std(depths),
+        D_MAX: max(depths) if len(depths) > 0 else 0,
+        D_MIN: min(depths) if len(depths) > 0 else 0,
+        D_MED: np.median(depths) if len(depths) > 0 else 0,
+        D_AVG: np.mean(depths) if len(depths) > 0 else 0,
+        D_STD: np.std(depths) if len(depths) > 0 else 0,
         D_ALL_DEPTHS: None,
         D_ALL_DEPTH_POSITIONS: None,
         D_ALL_DEPTH_MAP: None,
@@ -440,7 +444,7 @@ def print_read_depth_summary(summary, output, verbose=False, genome_only=False):
                 for idx in summary[chrom][D_ALL_DEPTH_POSITIONS]:
                     depth = summary[chrom][D_ALL_DEPTH_MAP][idx]
                     id = "%4d:" % idx
-                    pound_count = int(32.0 * depth / summary[chrom][D_MAX])
+                    pound_count = int(32.0 * depth / summary[chrom][D_MAX]) if summary[chrom][D_MAX] != 0 else 0
                     print("\t\t\t{} {} {}".format(id, '#' * pound_count, depth), file=output)
 
             if chrom != GENOME_KEY and summary[chrom][D_ALL_DEPTH_BINS] is not None:
@@ -592,7 +596,7 @@ def main(args = None):
         try:
             output = sys.stdout
             if args.output_file is not None:
-                output = open(args.output_file, 'w')
+                output = open(args.output_file, 'w+')
             if args.generic_stats:
                 if not args.silent: print_generic_read_stats(bam_summaries[alignment_filename], output,
                                                              verbose=args.verbose, genome_only=args.genome_only)
