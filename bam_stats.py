@@ -59,6 +59,7 @@ LENGTH_LOG_BASE_DEFAULT=2
 LENGTH_LOG_BASE_ALT=10
 LENGTH_LOG_MAX_DEFAULT=32
 percent = lambda small, big: int(100.0 * small / big) if big != 0 else 0.0
+log = lambda value, base: math.log(value, base) if value > 0 else 0
 
 
 def parse_args(args = None):
@@ -136,8 +137,8 @@ def get_read_length_summary(read_summaries, length_log_base=LENGTH_LOG_BASE_DEFA
         if read_summary[R_LENGTH] is None:
             #todo
             continue
-        log_length_bins[int(math.log(read_summary[R_LENGTH], length_log_base))] += 1.0
-        if length_log_base_alt is not None: log_lenght_alt_bins[int(math.log(read_summary[R_LENGTH], length_log_base_alt))] += 1.0
+        log_length_bins[int(log(read_summary[R_LENGTH], length_log_base))] += 1.0
+        if length_log_base_alt is not None: log_lenght_alt_bins[int(log(read_summary[R_LENGTH], length_log_base_alt))] += 1.0
         all_lengths.append(read_summary[R_LENGTH])
 
     summary = {
@@ -207,7 +208,7 @@ def print_generic_read_stats(summary, output, verbose=False, genome_only=False):
 
 def print_log_binned_data(log_bins, output, indent_count=3):
     extant_log_bins = list(filter(lambda x: log_bins[x] != 0, [x for x in range(len(log_bins))]))
-    if len(extant_log_bins) != 0:
+    if len(extant_log_bins) == 0:
         print("{} [No Data]".format('\t'*indent_count), file=output)
         return
     max_bucket = max(extant_log_bins)
@@ -336,12 +337,12 @@ def  get_read_depth_summary(read_summaries, spacing, included_range=None):
         assert len(new_depths) == len(new_depth_positions)
 
     # get read depth log value
-    log_depth_bins = [0 for _ in range(int(math.log(max(1,max(depths)), 2)) + 1)]
+    log_depth_bins = [0 for _ in range(int(log(max(1,max(depths)), 2)) + 1)]
     for depth in depths:
         if depth == 0:
             log_depth_bins[0] += 1
         else:
-            log_depth_bins[int(math.log(depth, 2))] += 1
+            log_depth_bins[int(log(depth, 2))] += 1
 
     # get depth summary
     summary = {
