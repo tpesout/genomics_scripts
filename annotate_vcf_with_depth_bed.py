@@ -95,7 +95,8 @@ def main():
         curr_bed_itor = None
 
         # read input, write to output
-        with open(args.input_vcf) as input:
+        input_open_fcn = open if not input_vcf.endswith("gz") else gzip.open
+        with input_open_fcn(args.input_vcf) as input:
             linenr = -1
             for line in input:
                 linenr += 1
@@ -123,6 +124,7 @@ def main():
                         missing_contigs.add(chr)
                     continue
                 if curr_chr != chr:
+                    print("Starting new contig: {}".format(chr), file=sys.stderr)
                     curr_bed_itor = iter(depths[chr])
                     curr_bed = next(curr_bed_itor, None)
                 while (curr_bed is not None and curr_bed[STOP] <= pos):
