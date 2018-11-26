@@ -1,0 +1,188 @@
+#!/usr/bin/env python
+from __future__ import print_function
+import argparse
+import gzip
+import sys
+import os
+import numpy as np
+import random as rand
+
+
+
+def parse_args():
+    parser = argparse.ArgumentParser("Downsample FASTQ based on length and total coverage")
+    parser.add_argument('--input', '-i', dest='input', required=True, type=str,
+                       help='FASTQ input file')
+    parser.add_argument('--output', '-o', dest='output', required=True, type=str,
+                       help='Write output to file (otherwise stdout)')
+    parser.add_argument('--stats_only', '-s', dest='stats_only', action='store_true', default=False,
+                       help='Only print stats on input FQ')
+
+    # filtering
+    parser.add_argument('--min_read_length', '-l', dest='min_read_length', default=None, type=int,
+                       help='Only consider reads with this length or greater')
+    parser.add_argument('--max_read_length', '-L', dest='max_read_length', default=None, type=int,
+                       help='Only consider reads with this length or lesser')
+
+    # whether to keep reads
+    parser.add_argument('--read_ratio', '-a', dest='read_ratio', default=None, type=float,
+                       help='Keep approximately this ratio of the reads (must be between 0 and 1)')
+    parser.add_argument('--total_bases', '-t', dest='total_bases', default=None, type=str,
+                       help='Keep reads totaling around this amount of total nucleotides')
+    parser.add_argument('--coverage_depth', '-c', dest='coverage_depth', default=None, type=float,
+                       help='Keep reads such that roughly this depth is achieved (--reference_length parameter is required)')
+    parser.add_argument('--reference_length', '-r', dest='reference_length', default=None, type=str,
+                       help='Length of reference')
+
+    return parser.parse_args()
+
+
+def log(msg):
+    print(msg, file=sys.stderr)
+
+
+def human2comp(size_str):
+    if size_str is None: return None
+    size_str = size_str.upper()
+    if not size_str.endswith("B"): return int(size_str)
+    if size_str.endswith("KB"): return 1000 * int(size_str.rstrip("KB"))
+    if size_str.endswith("MB"): return 1000 * 1000 * int(size_str.rstrip("MB"))
+    if size_str.endswith("GB"): return 1000 * 1000 * 1000 * int(size_str.rstrip("GB"))
+    if size_str.endswith("TB"): return 1000 * 1000 * 1000 * 1000 * int(size_str.rstrip("TB"))
+    raise Exception("Unsupported size suffix: {}".format(size_str))
+
+
+def main():
+    args = parse_args()
+
+    # determine depth mechanism
+    if not args.stats_only:
+        inclusion_mechanisms = len(list(filter(lambda x: x is not None, [args.read_ratio, args.total_bases, args.coverage_depth])))
+        if inclusion_mechanisms == 0:
+            raise Exception("Must specify mechanism to keep reads: read_ratio, total_bases, or coverage_depth")
+        elif inclusion_mechanisms > 1:
+            raise Exception("Must specify only one mechanism to keep reads: read_ratio, total_bases, or coverage_depth")
+        elif args.coverage_depth is not None and args.reference_length is None:
+            raise Exception("If coverage_depth mechanism is used, reference_length must also be specified")
+        elif args.read_ratio is not None and not (0.0 < args.read_ratio < 1.0):
+            raise Exception("Parameter read_ratio must be between 0.0 and 1.0 (exclusive)")
+
+
+    # get input parameters
+    input = args.input
+    if not os.path.isfile(input):
+        raise Exception("Input file {} does not exist".format(input))
+
+    # filters
+    filters = list()
+    if args.min_read_length is not None: filters.append("min length {}".format(args.min_read_length))
+    if args.max_read_length is not None: filters.append("max length {}".format(args.max_read_length))
+    def filter_read(read):
+        if type(read) == list: read = read[1]
+        read_length = len(read)
+        if args.min_read_length is not None and read_length < args.min_read_length: return False
+        if args.max_read_length is not None and read_length > args.max_read_length: return False
+        return True
+
+    # preprocessing
+    log("Preprocessing {}:".format(input))
+    if len(filters) != 0: log("  Filters: {}".format(", ".join(filters)))
+    all_read_lengths = list()
+    filtered_read_lengths = list()
+    def handle_read_analysis(read, linenr):
+        # format sanity check
+        if not (read[0].startswith("@") and read[2].startswith("+") and
+                len(read[1]) == len(read[3])):
+            log("Error at approx line {} in {}: does not appear to be in FQ format.".format(linenr, input))
+            sys.exit(1)
+        all_read_lengths.append(len(read[1]))
+        if filter_read(read):
+            filtered_read_lengths.append(len(read[1]))
+
+    # read file
+    current_read = list()
+    linenr = 0
+    with open(input) as instream:
+        for line in instream:
+            linenr += 1
+            current_read.append(line.strip())
+            # have we finished the current read?
+            if len(current_read) == 4:
+                handle_read_analysis(current_read, linenr)
+                current_read = list()
+
+    # stats
+    reference_size = human2comp(args.reference_length)
+    def print_stats(read_lengths):
+        log("    Total reads: {}".format(len(read_lengths)))
+        log("    Total bases: {} {}".format(sum(read_lengths),
+                                            "" if reference_size is None else
+                                            ("({:.2f}x coverage)".format(1.0 * sum(read_lengths) / reference_size))))
+        log("    Avg length:  {}".format(int(np.mean(read_lengths))))
+        log("    Med length:  {}".format(int(np.median(read_lengths))))
+        log("    Min length:  {}".format(min(read_lengths)))
+        log("    Max length:  {}".format(max(read_lengths)))
+
+    log("  Read {} lines".format(linenr))
+    if len(all_read_lengths) == 0:
+        print("No reads found!")
+        sys.exit(0)
+    if reference_size is not None: log("  Assuming reference size of {}".format(reference_size))
+    log("  All reads:")
+    print_stats(all_read_lengths)
+    if len(all_read_lengths) == len(filtered_read_lengths):
+        log("No reads filtered")
+    else:
+        log("  Reads passing filter:")
+        print_stats(filtered_read_lengths)
+
+    # quit early if only printing stats
+    if args.stats_only:
+        log("Only printing stats.")
+        sys.exit(0)
+
+    # determine metric for accepting a read
+    should_keep_read = lambda x: True
+    if args.read_ratio is not None:
+        should_keep_read = lambda x: rand.random() <= args.read_ratio
+    elif args.total_bases is not None:
+        likelihood_per_base = 1.0 * human2comp(args.total_bases) / sum(filtered_read_lengths)
+        should_keep_read = lambda x: rand.random() <= (len(x[2] if type(x) == list else x) * likelihood_per_base)
+    elif args.coverage_depth is not None:
+        likelihood_per_base = 1.0 * args.coverage_depth * reference_size / sum(filtered_read_lengths)
+        should_keep_read = lambda x: rand.random() <= (len(x[2] if type(x) == list else x) * likelihood_per_base)
+
+    # downsample the fq
+    log("Downsampling input FASTQ")
+    saved_read_lengths = list()
+    outstream = None
+    try:
+        # get output file
+        if args.output is not None:
+            outstream = open(args.output, 'w')
+        else:
+            outstream = sys.stdout
+
+        # read input file again
+        current_read = list()
+        with open(input) as instream:
+            for line in instream:
+                current_read.append(line.strip())
+                # have we finished the current read?
+                if len(current_read) == 4:
+                    if filter_read(current_read) and should_keep_read(current_read):
+                        saved_read_lengths.append(len(current_read[1]))
+                    current_read = list()
+
+    # make sure output is closed (if appropriate)
+    finally:
+        if outstream is not None and args.output is not None: outstream.close()
+
+    # print stats
+    log("  Saved reads:")
+    print_stats(saved_read_lengths)
+    log("Fin.")
+
+
+if __name__ == "__main__":
+    main()
