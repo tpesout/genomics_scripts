@@ -155,28 +155,16 @@ def main():
     # downsample the fq
     log("Downsampling input FASTQ")
     saved_read_lengths = list()
-    outstream = None
-    try:
-        # get output file
-        if args.output is not None:
-            outstream = open(args.output, 'w')
-        else:
-            outstream = sys.stdout
-
-        # read input file again
-        current_read = list()
-        with open(input) as instream:
-            for line in instream:
-                current_read.append(line.strip())
-                # have we finished the current read?
-                if len(current_read) == 4:
-                    if filter_read(current_read) and should_keep_read(current_read):
-                        saved_read_lengths.append(len(current_read[1]))
-                    current_read = list()
-
-    # make sure output is closed (if appropriate)
-    finally:
-        if outstream is not None and args.output is not None: outstream.close()
+    with open(input) as instream, open(args.output, 'w') as outstream:
+        for line in instream:
+            current_read.append(line)
+            # have we finished the current read?
+            if len(current_read) == 4:
+                if filter_read(current_read) and should_keep_read(current_read):
+                    for r in current_read:
+                        outstream.write(r)
+                    saved_read_lengths.append(len(current_read[1]))
+                current_read = list()
 
     # print stats
     log("  Saved reads:")
