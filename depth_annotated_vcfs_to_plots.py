@@ -5,6 +5,7 @@ import gzip
 import sys
 import os
 import math
+import numpy as np
 
 TP='tp'
 FP='fp'
@@ -85,7 +86,7 @@ def plot_it(depths, precisions, recalls, fmeasures, total_calls=None, title=None
         plt.plot(depths, recalls, color='red')
         plt.plot(depths, fmeasures, color='purple')
 
-    if title is not None: plt.title("MarginPhase Nanopore: " + title)
+    if title is not None: plt.title(title)
     plt.show()
 
 
@@ -93,30 +94,51 @@ def plot_it_all(depths, d_precisions, d_recalls, d_fmeasures, precisions, recall
                 d_total_calls=None, title=None):
     import matplotlib.pyplot as plt
 
+    fig, ax1 = plt.subplots()
+    ax1.set_xlabel("Read Depth")
+    ax1.set_ylim([0.0,1.0])
+    ax1.set_ylabel("Precision, Recall, F-Measure")
+    handles = list()
+
     # at depths
-    plt.plot(depths, d_precisions, linestyle=":", color='blue', label='Precision (At Depth)')
-    plt.plot(depths, d_recalls, linestyle=":", color='red', label='Recall (At Depth)')
-    plt.plot(depths, d_fmeasures, linestyle=":", color='purple', label='F-Measure (At Depth)')
+    dp, = ax1.plot(depths, d_precisions, linestyle=":", color='blue', label='Precision (At Depth)')
+    dr, = ax1.plot(depths, d_recalls, linestyle=":", color='red', label='Recall (At Depth)')
+    df, = ax1.plot(depths, d_fmeasures, linestyle=":", color='purple', label='F-Measure (At Depth)')
+    handles.extend([dp,dr,df])
 
     # at or above
-    plt.plot(depths, precisions, color='blue', label='Precision')
-    plt.plot(depths, recalls, color='red', label='Recall')
-    plt.plot(depths, fmeasures, color='purple', label='F-Measure')
+    tp, = ax1.plot(depths, precisions, color='blue', label='Precision')
+    tr, = ax1.plot(depths, recalls, color='red', label='Recall')
+    tf, = ax1.plot(depths, fmeasures, color='purple', label='F-Measure')
+    handles.extend([tp,tr,tf])
 
     # depths
     if d_total_calls is not None:
         sizes = list(map(lambda x: 4 ** math.log10(1 if x == 0 else x), d_total_calls))
-        plt.scatter(depths, d_fmeasures, s=sizes, alpha=.2, color='grey', label="Total Calls at Depth")
+        ax2 = ax1.twinx()
+        tc, = ax2.plot(depths, d_total_calls, color='grey', label="Total Calls at Depth")
+        handles.append(tc)
+        ax2.set_ylabel("Number of Calls")
 
-    plt.legend(loc=0)
+    ax1.legend(handles=handles, loc=0)
 
     # best depth (at or above)
+    # max_p = max(precisions)
+    # max_p_depths = list(filter(lambda i: precisions[i[0]] == max_p, enumerate(depths)))
+    # for d in max_p_depths:
+    #     ax1.axvline(x=d[1], alpha=.5, color='blue')
+    # max_r = max(recalls)
+    # max_r_depths = list(filter(lambda i: recalls[i[0]] == max_r, enumerate(depths)))
+    # for d in max_r_depths:
+    #     ax1.axvline(x=d[1], alpha=.5, color='red')
     max_f = max(fmeasures)
     max_f_depths = list(filter(lambda i: fmeasures[i[0]] == max_f, enumerate(depths)))
     for d in max_f_depths:
-        plt.axvline(x=d[1], color='purple')
+        ax1.axvline(x=d[1], alpha=.5, color='purple')
+
 
     if title is not None: plt.title(title)
+    fig.tight_layout()
     plt.show()
 
 
@@ -194,10 +216,10 @@ def main():
         curr_depth -= 1
 
     # plots
-    plot_it(depths, d_precisions, d_recalls, d_fmeasures, total_calls=d_totals,
-            title=None if not args.title else (args.title + ": At Depth"))
-    plot_it(depths, t_precisions, t_recalls, t_fmeasures,
-            title=None if not args.title else (args.title + ": At or Above Depth"))
+    # plot_it(depths, d_precisions, d_recalls, d_fmeasures, total_calls=d_totals,
+    #         title=None if not args.title else (args.title + ": At Depth"))
+    # plot_it(depths, t_precisions, t_recalls, t_fmeasures,
+    #         title=None if not args.title else (args.title + ": At or Above Depth"))
     plot_it_all(depths, d_precisions, d_recalls, d_fmeasures, t_precisions, t_recalls, t_fmeasures,
                 d_total_calls=d_totals, title=args.title)
 

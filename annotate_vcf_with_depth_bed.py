@@ -127,6 +127,7 @@ def main():
                     print("Starting new contig: {}".format(chr), file=sys.stderr)
                     curr_bed_itor = iter(depths[chr])
                     curr_bed = next(curr_bed_itor, None)
+                    curr_chr = chr
                 while (curr_bed is not None and curr_bed[STOP] <= pos):
                     curr_bed = next(curr_bed_itor, None)
 

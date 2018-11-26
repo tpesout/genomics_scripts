@@ -10,22 +10,26 @@ import subprocess
 # subs
 # ptype
 
+existed = set()
+
 def assert_exists(loc):
     if not loc.startswith("s3://"): return True
+    if loc in existed: return True
     if len(subprocess.check_output(['s3cmd', 'ls', loc])) == 0:
         print("DNE: {}".format(loc), file=sys.stderr)
         return False
+    existed.add(loc)
     return True
 
-UUID = "HG002.hs37d5.{read0}.chr{chr}"
+UUID = "NA12878.grch38.{read0}.chr{chr}"
 BAM = ""
-CHR = "{chr}"
-FA = "s3://margin-phase/fasta/hs37d5.{chr}.fa"
+CHR = "chr{chr}"
+FA = "s3://margin-phase/fasta/hg38.chr{chr}.fa"
 # PARAMS = "s3://margin-phase/params/pecan/params.{read1}.{sub}.{ptype}.pec_hmm_2.json"
 PARAMS = "s3://margin-phase/params/final/params.pacbio.181009.json"
 
 reads = [
-    ['pb', 'pb', 's3://margin-phase/bam/hg002/hs37d5.pb/HG002.Q20.hs37d5.pbmm2.MAPQ60.chr{chr}.bam'],
+    ['pb', 'pb', 's3://margin-phase/bam/grch38/NA12878/pb/NA12878.grch38.pb.mm.q30pri.chr{chr}.bam'],
     # ['np2-q0', 'np', 's3://margin-phase/bam/nanopore2/NA12878.hg38.np2.{chr}.bam'],
     # ['pb-q0', 'pb', 's3://margin-phase/bam/realigned/NA12878.hg38.pb.mm.{chr}.bam'],
     # ['np2-q30', 'np', 's3://margin-phase/bam/nanopore2.q30/NA12878.hg38.np2.q30.{chr}.bam'],
@@ -64,11 +68,11 @@ for read in reads:
             for ptype in ptypes:
                 uuid = UUID.format(read0=read[0], chr=chr, sub=sub, ptype=ptype)
                 bam = read[2].format(read0=read[0], chr=chr)
-                chr = CHR.format(chr=chr)
                 fa = FA.format(chr=chr)
+                contig = CHR.format(chr=chr)
                 params = PARAMS.format(read1=read[1], sub=sub, ptype=ptype)
 
-                sample = [uuid, bam, chr, fa, params]
+                sample = [uuid, bam, contig, fa, params]
                 print("\t".join(sample))
                 for s in sample:
                     have_everything = have_everything and assert_exists(s)
