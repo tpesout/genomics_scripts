@@ -131,7 +131,7 @@ def main():
     log("  All reads:")
     print_stats(all_read_lengths)
     if len(all_read_lengths) == len(filtered_read_lengths):
-        log("No reads filtered")
+        log("  No reads filtered")
     else:
         log("  Reads passing filter:")
         print_stats(filtered_read_lengths)
@@ -147,10 +147,12 @@ def main():
         should_keep_read = lambda x: rand.random() <= args.read_ratio
     elif args.total_bases is not None:
         likelihood_per_base = 1.0 * human2comp(args.total_bases) / sum(filtered_read_lengths)
-        should_keep_read = lambda x: rand.random() <= (len(x[2] if type(x) == list else x) * likelihood_per_base)
+        likelihood_per_read = likelihood_per_base * np.mean(filtered_read_lengths)
+        should_keep_read = lambda x: rand.random() <= likelihood_per_read
     elif args.coverage_depth is not None:
         likelihood_per_base = 1.0 * args.coverage_depth * reference_size / sum(filtered_read_lengths)
-        should_keep_read = lambda x: rand.random() <= (len(x[2] if type(x) == list else x) * likelihood_per_base)
+        likelihood_per_read = likelihood_per_base * np.mean(filtered_read_lengths)
+        should_keep_read = lambda x: rand.random() <= likelihood_per_read
 
     # downsample the fq
     log("Downsampling input FASTQ")
