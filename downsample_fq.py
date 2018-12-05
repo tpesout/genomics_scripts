@@ -142,17 +142,17 @@ def main():
         sys.exit(0)
 
     # determine metric for accepting a read
-    should_keep_read = lambda x: True
+    likelihood_per_read = None
     if args.read_ratio is not None:
-        should_keep_read = lambda x: rand.random() <= args.read_ratio
+        likelihood_per_read = args.read_ratio
+        log("Using read ratio of {} for read selection".format(likelihood_per_read))
     elif args.total_bases is not None:
-        likelihood_per_base = 1.0 * human2comp(args.total_bases) / sum(filtered_read_lengths)
-        likelihood_per_read = likelihood_per_base * np.mean(filtered_read_lengths)
-        should_keep_read = lambda x: rand.random() <= likelihood_per_read
+        likelihood_per_read = 1.0 * human2comp(args.total_bases) / np.mean(filtered_read_lengths) / len(filtered_read_lengths)
+        log("Selecting {} total bases, with a per-read likelihood of {}".format(args.total_bases, likelihood_per_read))
     elif args.coverage_depth is not None:
-        likelihood_per_base = 1.0 * args.coverage_depth * reference_size / sum(filtered_read_lengths)
-        likelihood_per_read = likelihood_per_base * np.mean(filtered_read_lengths)
-        should_keep_read = lambda x: rand.random() <= likelihood_per_read
+        likelihood_per_read = 1.0 * args.coverage_depth * reference_size / np.mean(filtered_read_lengths) / len(filtered_read_lengths)
+        log("Selecting for a coverage depth of {} for a reference of size {} with a per-read likelihood of {}".format(args.coverage_depth, reference_size, likelihood_per_read))
+    should_keep_read = lambda x: rand.random() <= likelihood_per_read
 
     # downsample the fq
     log("Downsampling input FASTQ")
