@@ -6,6 +6,7 @@ import sys
 import os
 import numpy as np
 import random as rand
+import math
 
 
 
@@ -13,7 +14,7 @@ def parse_args():
     parser = argparse.ArgumentParser("Downsample FASTQ based on length and total coverage")
     parser.add_argument('--input', '-i', dest='input', required=True, type=str,
                        help='FASTQ input file')
-    parser.add_argument('--output', '-o', dest='output', required=True, type=str,
+    parser.add_argument('--output', '-o', dest='output', required=False, default=None, type=str,
                        help='Write output to file (otherwise stdout)')
     parser.add_argument('--stats_only', '-s', dest='stats_only', action='store_true', default=False,
                        help='Only print stats on input FQ')
@@ -52,11 +53,35 @@ def human2comp(size_str):
     raise Exception("Unsupported size suffix: {}".format(size_str))
 
 
+def bin_and_print_data(data, non_log_bin_size=None, log_base=None, indent_count=2):
+    if (non_log_bin_size is None and log_base is None) or (non_log_bin_size is not None and log_base is not None):
+        log("{}ERROR: bin_and_print_data invoked incorrectly".format("  " * indent_count))
+        return
+    # fill bins
+    bins = dict()
+    get_bin = lambda x: int(math.log(x, log_base) if log_base is not None else (x / non_log_bin_size))
+    for d in data:
+        b = get_bin(d)
+        if b not in bins: bins[b] = 0
+        bins[b] += 1
+    # print buckets
+    min_bin = min(bins.keys())
+    max_bin = max(bins.keys())
+    max_value = max(bins.values())
+    for b in range(min_bin, max_bin + 1):
+        id = ("%d^%3d:\t" % (log_base, b)) if log_base is not None else ("%d* %4d:\t" % (non_log_bin_size, b))
+        count = int(bins[b]) if b in bins else 0
+        pound_count = int(32.0 * count / max_value)
+        log("{} {} {}{} {:6d}".format('  '*(indent_count+1), id, "#"*pound_count, " "*(32 - pound_count), count))
+
+
 def main():
     args = parse_args()
 
     # determine depth mechanism
     if not args.stats_only:
+        if args.output is None:
+            raise Exception("--output parameter is required if --stats_only is not set")
         inclusion_mechanisms = len(list(filter(lambda x: x is not None, [args.read_ratio, args.total_bases, args.coverage_depth])))
         if inclusion_mechanisms == 0:
             raise Exception("Must specify mechanism to keep reads: read_ratio, total_bases, or coverage_depth")
@@ -122,6 +147,12 @@ def main():
         log("    Med length:  {}".format(int(np.median(read_lengths))))
         log("    Min length:  {}".format(min(read_lengths)))
         log("    Max length:  {}".format(max(read_lengths)))
+        if (args.stats_only):
+            log("    Lengths in log space:")
+            bin_and_print_data(read_lengths, log_base=2)
+            log("    Lengths in real space:")
+            bin_and_print_data(read_lengths, non_log_bin_size=1000)
+
 
     log("  Read {} lines".format(linenr))
     if len(all_read_lengths) == 0:
