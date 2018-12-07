@@ -53,7 +53,7 @@ def human2comp(size_str):
     raise Exception("Unsupported size suffix: {}".format(size_str))
 
 
-def bin_and_print_data(data, non_log_bin_size=None, log_base=None, indent_count=2):
+def bin_and_print_data(data, non_log_bin_size=None, log_base=None, indent_count=3):
     if (non_log_bin_size is None and log_base is None) or (non_log_bin_size is not None and log_base is not None):
         log("{}ERROR: bin_and_print_data invoked incorrectly".format("  " * indent_count))
         return
@@ -68,11 +68,18 @@ def bin_and_print_data(data, non_log_bin_size=None, log_base=None, indent_count=
     min_bin = min(bins.keys())
     max_bin = max(bins.keys())
     max_value = max(bins.values())
+    last_print_skipped = False
     for b in range(min_bin, max_bin + 1):
         id = ("%d^%3d:\t" % (log_base, b)) if log_base is not None else ("%d* %4d:\t" % (non_log_bin_size, b))
         count = int(bins[b]) if b in bins else 0
+        if count * 500 < max_value and log_base is None:
+            if not last_print_skipped:
+                log("{} ...".format('  '*indent_count))
+            last_print_skipped = True
+            continue
         pound_count = int(32.0 * count / max_value)
-        log("{} {} {}{} {:6d}".format('  '*(indent_count+1), id, "#"*pound_count, " "*(32 - pound_count), count))
+        log("{} {} {}{} {:6d}".format('  '*(indent_count), id, "#"*pound_count, " "*(32 - pound_count), count))
+        last_print_skipped = False
 
 
 def main():
