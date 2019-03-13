@@ -10,7 +10,11 @@ import tempfile
 import os
 from subprocess import run
 from contextlib import closing
+from multithread import *
 
+FORWARD="FORWARD"
+BACKWARD="BACKWARD"
+FILE_LOCATION = 'file_location'
 
 def parse_args(args = None):
     parser = argparse.ArgumentParser("Separates a shasta assembly into individual contigs")
@@ -23,11 +27,62 @@ def parse_args(args = None):
                         help='Attempts to separate into forward and reverse strands with minimap (requires true ref)')
     parser.add_argument('--reference', '-r', dest='reference', required=False, type=str, default=None,
                         help='Input assembly')
+    parser.add_argument('--threads', '-t', dest='threads', required=False, type=int, default=1,
+                        help='Number of threads to use for strandification')
 
     return parser.parse_args() if args is None else parser.parse_args(args)
 
 
-def handle_strand(segment_filename, forward_out, backward_out, reference_location, tmp_dir):
+def direction_service(work_queue, done_queue, service_name="direction_service", reference_location=None, tmp_dir=None):
+    # sanity check
+    assert reference_location is not None
+    assert tmp_dir is not None
+
+    # prep
+    total_handled = 0
+    failure_count = 0
+
+    #catch overall exceptions
+    try:
+        for f in iter(work_queue.get, 'STOP'):
+            # catch exceptions on each element
+            try:
+                # logging
+                print("[{}] '{}' processing {}".format(service_name, current_process().name, f))
+                file_location = f[FILE_LOCATION]
+
+                forward = determine_strand(file_location, reference_location, tmp_dir)
+
+                if forward is not None:
+                    done_queue.put("{}:{}".format(FORWARD if forward else BACKWARD, file_location))
+
+            except Exception as e:
+                # get error and log it
+                message = "{}:{}".format(type(e), str(e))
+                error = "{} '{}' failed with: {}".format(service_name, current_process().name, message)
+                print("[{}] ".format(service_name) + error)
+                done_queue.put(error)
+                failure_count += 1
+
+            # increment total handling
+            total_handled += 1
+
+    except Exception as e:
+        # get error and log it
+        message = "{}:{}".format(type(e), str(e))
+        error = "{} '{}' critically failed with: {}".format(service_name, current_process().name, message)
+        print("[{}] ".format(service_name) + error)
+        done_queue.put(error)
+
+    finally:
+        # logging and final reporting
+        print("[%s] '%s' completed %d calls with %d failures"
+              % (service_name, current_process().name, total_handled, failure_count))
+        done_queue.put("{}:{}".format(TOTAL_KEY, total_handled))
+        done_queue.put("{}:{}".format(FAILURE_KEY, failure_count))
+
+
+def determine_strand(segment_filename, reference_location, tmp_dir):
 
     print("Determining strand for {}".format(segment_filename))
     args = ["minimap2", "-a", "-x", "asm20", reference_location, segment_filename]
@@ -90,14 +145,6 @@ def handle_strand(segment_filename, forward_out, backward_out, reference_locatio
         is_forward = forward_primary
     print("\tis_forward: {}".format(is_forward))
 
-    # write it
-    with open(segment_filename, 'r') as segment_out:
-        for line in segment_out:
-            if is_forward:
-                forward_out.write(line)
-            else:
-                backward_out.write(line)
-
     return is_forward
 
 
@@ -125,19 +172,13 @@ def main():
             curr_dir = os.path.join(curr_dir, dir)
             if not os.path.isdir(curr_dir): os.mkdir(curr_dir)
 
+    # prep for stranding
+    all_segment_filenames = list()
+
     # split files
     segment_filename = None
     segment_out = None
-    fwd_out = None
-    bkwd_out = None
     try:
-        if args.strandify:
-            fwd_filename = "{}.forward.fa".format(output_prefix)
-            bkwd_filename = "{}.backward.fa".format(output_prefix)
-            print("Writing forward segments to: {}".format(fwd_filename))
-            print("Writing backward segments to: {}".format(bkwd_filename))
-            fwd_out = open(fwd_filename, 'w')
-            bkwd_out = open(bkwd_filename, 'w')
         with open(input_file, 'r') as fa_in:
             for line in fa_in:
                 if line.startswith(">"):
@@ -147,7 +188,7 @@ def main():
                     # file handling
                     if segment_out is not None:
                         segment_out.close()
-                        if args.strandify: handle_strand(segment_filename, fwd_out, bkwd_out, args.reference, args.tmp)
+                        all_segment_filenames.append(segment_filename)
                     segment_filename = "{}.{}.fa".format(output_prefix, segment_name)
                     print("Writing segment {} to {}".format(segment_name, segment_filename))
                     segment_out = open(segment_filename, 'w')
@@ -162,16 +203,45 @@ def main():
     finally:
         if segment_out is not None:
             segment_out.close()
-            if args.strandify: handle_strand(segment_filename, fwd_out, bkwd_out, args.reference, args.tmp)
-
-        if fwd_out is not None:
-            fwd_out.close()
-        if bkwd_out is not None:
-            bkwd_out.close()
+            all_segment_filenames.append(segment_filename)
 
 
 
+    if args.strandify:
+        print("Starting strand determination service")
+        service_args = {'reference_location': args.reference, 'tmp_dir': args.tmp}
+        iterable_args = {}
+        total, failure, messages = run_service(direction_service, all_segment_filenames, iterable_args, FILE_LOCATION,
+                                               args.threads, service_arguments=service_args)
 
+        fwd_filename = "{}.forward.fa".format(output_prefix)
+        bkwd_filename = "{}.backward.fa".format(output_prefix)
+        print("Writing forward segments to: {}".format(fwd_filename))
+        print("Writing backward segments to: {}".format(bkwd_filename))
+        fwd_out = None
+        bkwd_out = None
+        try:
+            fwd_out = open(fwd_filename, 'w')
+            bkwd_out = open(bkwd_filename, 'w')
+
+            for msg in messages:
+                msg = msg.split(":")
+                if msg[0] == FORWARD:
+                    print("Writing {} as FWD".format(msg[1]))
+                    with open(msg[1]) as file_in:
+                        for line in file_in:
+                            fwd_out.write(line)
+                elif msg[0] == BACKWARD:
+                    print("Writing {} as BKWD".format(msg[1]))
+                    with open(msg[1]) as file_in:
+                        for line in file_in:
+                            bkwd_out.write(line)
+
+        finally:
+            if fwd_out is not None:
+                fwd_out.close()
+            if bkwd_out is not None:
+                bkwd_out.close()
 
 
 if __name__ == "__main__":
