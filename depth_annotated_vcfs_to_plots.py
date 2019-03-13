@@ -119,6 +119,7 @@ def plot_it_all(depths, d_precisions, d_recalls, d_fmeasures, precisions, recall
         tc, = ax2.plot(depths, d_total_calls, color='grey', label="Total Calls at Depth")
         handles.append(tc)
         ax2.set_ylabel("Number of Calls")
+        ax2.set_yscale('log')
 
     ax1.legend(handles=handles, loc=0)
 

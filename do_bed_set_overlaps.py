@@ -215,27 +215,33 @@ def plot_all_feature_coverage(coverage_beds, feature_beds, show=False, save=True
     # get genome elements
     genome_elements = []
     for bed in coverage_beds:
-        genome_elements.append(format_plot_element(bed, BED_INFO[bed][LABEL_IDX], BED_INFO[bed][COLOR_IDX],
-                                                   get_coverage_bed_location(bed)))
+        if bed in BED_INFO:
+            genome_elements.append(format_plot_element(bed, BED_INFO[bed][LABEL_IDX], BED_INFO[bed][COLOR_IDX],
+                                                       get_coverage_bed_location(bed)))
+        else:
+            print("No configuration for coverage bed {}, using defaults".format(bed))
+            genome_elements.append(format_plot_element(bed, bed, BASELINE_COLOR, get_coverage_bed_location(bed)))
     genome_elements.append(format_plot_element('genome', "Genome", BASELINE_COLOR, None))
-
-    # get feature elements
-    # feature_elements = [format_plot_element('genome', "Genome", BASELINE_COLOR, None)]
-    # feature_elements = []
-    # for bed in feature_beds:
-    #     feature_elements.append(format_plot_element(bed, BED_INFO[bed][LABEL_IDX], BED_INFO[bed][COLOR_IDX],
-    #                                                 get_feature_bed_location(bed)))
-    # feature_elements.reverse()
 
     # get coverage elements
     coverage_elements = {f:[] for f in feature_beds}
     for feature_bed in feature_beds:
         for coverage_bed in coverage_beds:
-            coverage_elements[feature_bed].append(
-                format_plot_element(coverage_bed, BED_INFO[coverage_bed][LABEL_IDX], BED_INFO[coverage_bed][COLOR_IDX],
-                                    get_bed_intersect_location(coverage_bed, feature_bed)))
-        coverage_elements[feature_bed].append(format_plot_element(feature_bed, BED_INFO[feature_bed][LABEL_IDX],
-                                                                  BASELINE_COLOR, get_feature_bed_location(feature_bed)))
+            if coverage_bed in BED_INFO:
+                coverage_elements[feature_bed].append(
+                    format_plot_element(coverage_bed, BED_INFO[coverage_bed][LABEL_IDX], BED_INFO[coverage_bed][COLOR_IDX],
+                                        get_bed_intersect_location(coverage_bed, feature_bed)))
+                coverage_elements[feature_bed].append(
+                    format_plot_element(feature_bed, BED_INFO[feature_bed][LABEL_IDX], BASELINE_COLOR,
+                                        get_feature_bed_location(feature_bed)))
+            else:
+                print("No configuration for coverage bed {}, using defaults".format(coverage_bed))
+                coverage_elements[feature_bed].append(
+                    format_plot_element(coverage_bed, coverage_bed, BASELINE_COLOR,
+                                        get_bed_intersect_location(coverage_bed, feature_bed)))
+                coverage_elements[feature_bed].append(
+                    format_plot_element(feature_bed, feature_bed, BASELINE_COLOR,
+                                        get_feature_bed_location(feature_bed)))
 
 
     # create figure
@@ -246,29 +252,6 @@ def plot_all_feature_coverage(coverage_beds, feature_beds, show=False, save=True
     n_rows = int(n_row_start + math.ceil(len(feature_beds) / 2.0))
     grid_size = (n_rows, n_cols)
     gridspec.GridSpec(n_rows, n_cols)
-
-    # # genome feature coverage
-    # plt.subplot2grid(grid_size, (0, 0), colspan=2, rowspan=n_row_start - 1)
-    # plt.title('Genome Feature Coverage')
-    #
-    # # legend
-    # from matplotlib.lines import Line2D
-    # legend_elements = [Line2D([0], [0], color=BED_INFO[x][COLOR_IDX], lw=16, label=BED_INFO[x][LABEL_IDX]) for x in coverage_beds]
-    # legend_elements.reverse()
-    # plt.legend(handles=legend_elements, bbox_to_anchor=(0.6, 0.8))
-    #
-    # # data
-    # xs, ys, elements = [], [] , feature_elements
-    # for i, v in enumerate(elements):
-    #     xs.append(i)
-    #     ys.append(v[VALUE_KEY])
-    # plt.barh(xs, ys, color=list(map(lambda x: x[COLOR_KEY], elements)))
-    # plt.yticks(xs, list(map(lambda x: x[LABEL_KEY], elements)))
-    # plt.xlim(0,1.07)
-    # plt.xticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-    # for x, v in enumerate(ys):
-    #     plt.text(1.02, x - .1, ("%.3f" % v), color=list(map(lambda x: x[COLOR_KEY], elements))[x])
-
 
     # genome read coverage
     plt.subplot2grid(grid_size, (n_row_start - 1, 0), colspan=2, rowspan=1)
@@ -295,7 +278,10 @@ def plot_all_feature_coverage(coverage_beds, feature_beds, show=False, save=True
 
         # subplot managment
         plt.subplot2grid(grid_size, (y, x))
-        plt.title(BED_INFO[feature][LABEL_IDX])
+        if feature in BED_INFO:
+            plt.title(BED_INFO[feature][LABEL_IDX])
+        else:
+            plt.title(feature)
 
         # data
         elements = coverage_elements[feature]
@@ -334,14 +320,25 @@ def plot_feature_coverage(coverage_beds, feature_bed, show=False, save=True):
     # add our baseline
     if feature_bed is None:
         elements.append(format_plot_element('genome', "Genome", BASELINE_COLOR, None))
-    else:
+    elif feature_bed in BED_INFO:
         elements.append(format_plot_element(feature_bed, BED_INFO[feature_bed][LABEL_IDX], BASELINE_COLOR,
                                             get_feature_bed_location(feature_bed)))
+    else:
+        print("No configuration for feature bed {}, using defaults".format(feature_bed))
+        elements.append(format_plot_element(feature_bed, BED_INFO[feature_bed][LABEL_IDX], BASELINE_COLOR,
+                                            get_feature_bed_location(feature_bed)))
+
     # add all our coverage beds
     for bed in coverage_beds:
-        elements.append(format_plot_element(bed, BED_INFO[bed][LABEL_IDX], BED_INFO[bed][COLOR_IDX],
-                            get_bed_intersect_location(bed, feature_bed) if feature_bed is not None
-                            else get_coverage_bed_location(bed)))
+        if bed in BED_INFO:
+            elements.append(format_plot_element(bed, BED_INFO[bed][LABEL_IDX], BED_INFO[bed][COLOR_IDX],
+                                get_bed_intersect_location(bed, feature_bed) if feature_bed is not None
+                                else get_coverage_bed_location(bed)))
+        else:
+            print("No configuration for coverage bed {}, using defaults".format(bed))
+            elements.append(format_plot_element(bed, bed, BASELINE_COLOR,
+                                get_bed_intersect_location(bed, feature_bed) if feature_bed is not None
+                                else get_coverage_bed_location(bed)))
     #sort
     elements.sort(key=lambda x: x[VALUE_KEY])
 
@@ -377,7 +374,8 @@ def main():
         get_genome_coverage(get_coverage_bed_location(coverage))
     # plot_feature_coverage(COVERAGE_BEDS, None)
 
-    spacing = str(max(max(map(len, FEATURE_BEDS)), 4 + max(map(len, COVERAGE_BEDS))))
+    spacing = str(max(0 if len(FEATURE_BEDS) == 0 else max(map(len, FEATURE_BEDS)),
+                      4 + (0 if len(COVERAGE_BEDS) == 0 else max(map(len, COVERAGE_BEDS)))))
     for feature in FEATURE_BEDS:
         print("\n#############################################")
         if not os.path.isfile(get_feature_bed_location(feature)):
