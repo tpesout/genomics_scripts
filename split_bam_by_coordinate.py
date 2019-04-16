@@ -41,7 +41,7 @@ def get_output_filename(input_file_location, coordinates):
     coord_description = coordinates[CHR] if len(coordinates) < 3 else "{}_{}-{}".format(
         coordinates[CHR], coordinates[START], coordinates[END])
     output_file_name = "{}.{}".format(".".join(input_file_parts[0:-1]), coord_description)
-    if coordinates[DESC] is not None:
+    if DESC in coordinates:
         output_file_name += "." + coordinates[DESC]
     output_file_name += ".bam"
     return output_file_name
