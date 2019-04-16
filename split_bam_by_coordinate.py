@@ -38,8 +38,9 @@ def get_output_filename(input_file_location, coordinates):
 
     input_file_name = os.path.basename(input_file_location)
     input_file_parts = input_file_name.split(".")
-    output_file_name = "{}.{}_{}-{}".format(".".join(input_file_parts[0:-1]), coordinates[CHR], coordinates[START],
-                                            coordinates[END])
+    coord_description = coordinates[CHR] if len(coordinates) < 3 else "{}_{}-{}".format(
+        coordinates[CHR], coordinates[START], coordinates[END])
+    output_file_name = "{}.{}".format(".".join(input_file_parts[0:-1]), coord_description)
     if coordinates[DESC] is not None:
         output_file_name += "." + coordinates[DESC]
     output_file_name += ".bam"
@@ -52,43 +53,60 @@ def main():
 
     coords = list()
     with open(args.coordinate_tsv) as tsv_in:
-        header=True
         for line in tsv_in:
-            if header:
-                header = False
-                continue
+            # skip
+            if line.startswith("#"): continue
+            if len(line.strip()) == 0: continue
+
+            # get line parts
             line = line.split("\t")
-            coords.append({
-                CHR:line[0],
-                START:int(line[1]),
-                END:int(line[2]),
-                DESC: None if args.description_column is None else "_".join(line[args.description_column].split())
-            })
+
+            # save relevant data
+            coord = {CHR:line[0]}
+            if len(line) >= 3:
+                coord[START] = int(line[1])
+                coord[END] = int(line[2])
+            if args.description_column is not None:
+                coord[DESC] = "_".join(line[args.description_column].split())
+            coords.append(coord)
 
     for file in glob.glob(args.input_bam_glob):
         for coord in coords:
             out_filename = get_output_filename(file, coord)
             out_location = os.path.join(args.output_location, out_filename)
+            region = coord[CHR] if len(coord) < 3 else "{}:{}-{}".format(coord[CHR], coord[START], coord[END])
 
-            print("{}:\n\tloc:  {}:{}-{}\n\tdesc: {}\n\tout:  {}".format(file, coord[CHR], coord[START], coord[END],
-                                                                         coord[DESC], out_location), file=sys.stderr)
-            samtools_args = ['samtools', 'view', '-hb', file, "{}:{}-{}".format(coord[CHR], coord[START], coord[END])]
+            # log what's happening
+            print("{}:\n\tloc:  {}\n\tdesc: {}\n\tout:  {}".format(
+                file, region, coord[DESC] if DESC in coord else '', out_location), file=sys.stderr)
+
+            # get the region and index
+            samtools_args = ['samtools', 'view', '-hb', file, region]
             with open(out_location, 'w') as output:
                 subprocess.check_call(samtools_args, stdout=output)
             subprocess.check_call(['samtools', 'index', out_location])
+
+            # maybe make stats
             if args.produce_bam_stats:
                 stats_filename = "{}.stats.txt".format(out_filename)
                 stats_location = os.path.join(args.output_location, stats_filename)
-                bam_stats_args = ['-i', out_location, '-g', '-l', '-d', '-v', '-o', stats_location,
-                                  '-r', '{}-{}'.format(coord[START], coord[END])]
+                bam_stats_args = ['-i', out_location, '-g', '-l', '-d', '-v', '-o', stats_location]
+                if len(coord) >= 3:
+                    bam_stats_args.extend(['-r', '{}-{}'.format(coord[START], coord[END])])
+
+                # get summaries
                 generic_summaries, _, depth_summaries = bam_stats.main(bam_stats_args)
 
                 # are we flagging output based on depth?
                 if args.min_depth_threshold is not None:
+
+                    # find depth
                     generic_summary = generic_summaries[out_location][bam_stats.GENOME_KEY]
                     depth_summary = depth_summaries[out_location][bam_stats.GENOME_KEY]
                     depth_summary_value = int(max(depth_summary[bam_stats.D_MED], depth_summary[bam_stats.D_AVG]))
                     print("\tsection_depth:{}".format(depth_summary_value), file=sys.stderr)
+
+                    # handle min depth
                     if args.min_depth_threshold <= depth_summary_value:
                         print("\tFLAGGED!", file=sys.stderr)
                         # also try to get stats for only primary reads
