@@ -59,7 +59,7 @@ def main():
             if len(line.strip()) == 0: continue
 
             # get line parts
-            line = line.split("\t")
+            line = line.strip().split("\t")
 
             # save relevant data
             coord = {CHR:line[0]}
