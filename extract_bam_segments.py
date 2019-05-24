@@ -3,8 +3,13 @@ from __future__ import print_function
 import argparse
 import os
 import subprocess
+from multithread import *
 
+INPUT="input"
+OUTPUT="output"
+SEGMENT="segment"
 
+PIECE="piece"
 
 def parse_args():
     parser = argparse.ArgumentParser("Extracts BAM segments")
@@ -15,7 +20,57 @@ def parse_args():
     parser.add_argument('--output', '-o', dest='output', required=True, type=str,
                        help='Write output to file')
 
+    parser.add_argument('--threads', '-t', dest='threads', required=False, default=1, type=int,
+                       help='Write output to file')
+
     return parser.parse_args()
+
+
+
+def get_segments(work_queue, done_queue, service_name="example_service"):
+    # prep
+    total_handled = 0
+    failure_count = 0
+
+    #catch overall exceptions
+    try:
+        for f in iter(work_queue.get, 'STOP'):
+            # catch exceptions on each element
+            try:
+                # logging
+                print("[{}] '{}' processing {}".format(service_name, current_process().name, f))
+
+                segment_file = "{}.{}.bam".format(f[OUTPUT], f[SEGMENT])
+                print("Extracting reads into {}".format(segment_file))
+                with open(segment_file, 'w') as out_fh:
+                    subprocess.check_call(['samtools', 'view', '-hb', f[INPUT], f[SEGMENT]], stdout=out_fh)
+
+                done_queue.put("{}:{}".format(PIECE, segment_file))
+
+            except Exception as e:
+                # get error and log it
+                message = "{}:{}".format(type(e), str(e))
+                error = "{} '{}' failed with: {}".format(service_name, current_process().name, message)
+                print("[{}] ".format(service_name) + error)
+                done_queue.put(error)
+                failure_count += 1
+
+            # increment total handling
+            total_handled += 1
+
+    except Exception as e:
+        # get error and log it
+        message = "{}:{}".format(type(e), str(e))
+        error = "{} '{}' critically failed with: {}".format(service_name, current_process().name, message)
+        print("[{}] ".format(service_name) + error)
+        done_queue.put(error)
+
+    finally:
+        # logging and final reporting
+        print("[%s] '%s' completed %d calls with %d failures"
+              % (service_name, current_process().name, total_handled, failure_count))
+        done_queue.put("{}:{}".format(TOTAL_KEY, total_handled))
+        done_queue.put("{}:{}".format(FAILURE_KEY, failure_count))
 
 
 def main():
@@ -32,16 +87,21 @@ def main():
     # get individual pieces pieces
     pieces = list()
     print("Reading from {}".format(args.input))
-    for segment in segments:
-        segment_file = "{}.{}.bam".format(args.output, segment)
-        pieces.append(segment_file)
-        print("Extracting reads into {}".format(segment_file))
-        with open(segment_file, 'w') as out_fh:
-            subprocess.check_call(['samtools', 'view', '-hb', args.input, segment], stdout=out_fh)
+    iter_args = {
+        INPUT: args.input,
+        OUTPUT: args.output
+    }
+
+    total, failure, messages = run_service(get_segments, segments, iter_args, SEGMENT, args.threads)
+    print("Had {} failures out of {}".format(failure, total))
+    for msg in messages:
+        msg = msg.split(":")
+        if msg[0] == PIECE:
+            pieces.append(msg[1])
 
     # merge
     print("Merging into {}".format(args.output))
-    merge_cmd = ['samtools', 'merge', args.output]
+    merge_cmd = ['samtools', 'merge', '-@', str(args.threads), args.output]
     merge_cmd.extend(pieces)
     subprocess.check_call(merge_cmd)
 

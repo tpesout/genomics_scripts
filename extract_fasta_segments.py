@@ -44,7 +44,7 @@ def main():
                         print(seg, file=invert_out)
         print("Found {} segments (inverted)".format(len(inverted_segments)))
         segments = inverted_segments
-            
+
 
     # ensure faidx
     if not os.path.isfile("{}.fai".format(args.input)):
