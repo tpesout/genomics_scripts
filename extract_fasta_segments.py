@@ -14,6 +14,8 @@ def parse_args():
                        help='File with segments descriptors')
     parser.add_argument('--output', '-o', dest='output', required=True, type=str,
                        help='Write output to file')
+    parser.add_argument('--invert', '-v', action='store_true', dest='invert', default=False,
+                        help="Keep segments NOT in segment list")
 
     return parser.parse_args()
 
@@ -28,6 +30,21 @@ def main():
         for line in seg_f:
             segments.append(line.strip())
     print("Found {} segments".format(len(segments)))
+
+    if args.invert:
+        inverted_filename = "{}.inverted_segments.txt".format(args.output)
+        print("Inverting segments.  Writing to {}".format(inverted_filename))
+        inverted_segments = []
+        with open(inverted_filename, 'w') as invert_out, open(args.input, 'r') as fa_in:
+            for line in fa_in:
+                if line.startswith(">"):
+                    seg = line[1:].split()[0]
+                    if seg not in segments:
+                        inverted_segments.append(seg)
+                        print(seg, file=invert_out)
+        print("Found {} segments (inverted)".format(len(inverted_segments)))
+        segments = inverted_segments
+            
 
     # ensure faidx
     if not os.path.isfile("{}.fai".format(args.input)):
