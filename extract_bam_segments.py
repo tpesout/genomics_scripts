@@ -100,14 +100,32 @@ def main():
             pieces.append(msg[1])
 
     # merge
+    all_pieces = []
+    all_pieces.extend(pieces)
     print("Merging into {}".format(args.output))
+    if len(pieces) > 1000:
+        large_piece_chunks = []
+        curr_idx = 0
+        while curr_idx < len(pieces):
+            large_piece_chunk = "{}.{}.bam"
+            large_piece_chunks.append(large_piece_chunk)
+            current_pieces = pieces[curr_idx:min(curr_idx + 1000, len(pieces))]
+            merge_cmd = ['samtools', 'merge', '-@', str(args.threads), large_piece_chunk]
+            merge_cmd.extend(current_pieces)
+            subprocess.check_call(merge_cmd)
+            curr_idx += 1000
+
+        all_pieces.extend(large_piece_chunks)
+        pieces = large_piece_chunks
+
+    # final merge
     merge_cmd = ['samtools', 'merge', '-@', str(args.threads), args.output]
     merge_cmd.extend(pieces)
     subprocess.check_call(merge_cmd)
 
     #cleanup
     print("Cleaning up tmp files")
-    for file in pieces:
+    for file in all_pieces:
         os.remove(file)
 
     print("Fin.")
