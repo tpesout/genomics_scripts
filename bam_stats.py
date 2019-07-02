@@ -48,7 +48,8 @@ D_STD = "std_depth"
 D_ALL_DEPTHS = "all_depths"
 D_ALL_DEPTH_POSITIONS = "all_depth_positions"
 D_ALL_DEPTH_MAP = "all_depth_map"
-D_ALL_DEPTH_BINS = "all_depth_bins"
+D_LOG_DEPTH_BINS = "all_depth_bins"
+D_DEPTH_BINS = "depth_bins"
 D_SPACING = "depth_spacing"
 D_START_IDX = "depth_start_idx"
 D_RANGE = "depth_range"
@@ -336,9 +337,11 @@ def  get_read_depth_summary(read_summaries, spacing, included_range=None):
         assert len(depths) > 0
         assert len(new_depths) == len(new_depth_positions)
 
-    # get read depth log value
+    # get read depth bins
     log_depth_bins = [0 for _ in range(int(log(max(1,max(depths)), 2)) + 1)]
+    depth_bins = [0 for _ in range(int(max(1,max(depths))) + 1)]
     for depth in depths:
+        depth_bins[depth] += 1
         if depth == 0:
             log_depth_bins[0] += 1
         else:
@@ -354,7 +357,8 @@ def  get_read_depth_summary(read_summaries, spacing, included_range=None):
         D_ALL_DEPTHS: depths,
         D_ALL_DEPTH_POSITIONS: depth_positions,
         D_ALL_DEPTH_MAP: depth_map,
-        D_ALL_DEPTH_BINS: log_depth_bins,
+        D_LOG_DEPTH_BINS: log_depth_bins,
+        D_DEPTH_BINS: depth_bins,
         D_SPACING: spacing,
         D_START_IDX: start_idx,
         D_RANGE: included_range
@@ -377,7 +381,7 @@ def get_genome_depth_summary(summaries):
         D_ALL_DEPTHS: None,
         D_ALL_DEPTH_POSITIONS: None,
         D_ALL_DEPTH_MAP: None,
-        D_ALL_DEPTH_BINS: None,
+        D_LOG_DEPTH_BINS: None,
         D_SPACING: None,
         D_START_IDX: None,
         D_RANGE: None
@@ -426,8 +430,8 @@ def print_read_depth_summary(summary, output, verbose=False, genome_only=False):
         print("\t\tavg: {}".format(summary[chrom][D_AVG]), file=output)
         print("\t\tstd: {}".format(summary[chrom][D_STD]), file=output)
 
-        if chrom != GENOME_KEY and summary[chrom][D_ALL_DEPTH_BINS] is not None:
-            log_depth_bins = summary[chrom][D_ALL_DEPTH_BINS]
+        if chrom != GENOME_KEY and summary[chrom][D_LOG_DEPTH_BINS] is not None:
+            log_depth_bins = summary[chrom][D_LOG_DEPTH_BINS]
             total_depths = sum(log_depth_bins)
             log_depth_pairs = [(i, log_depth_bins[i]) for i in range(len(log_depth_bins))]
             log_depth_pairs.sort(key=lambda x: x[1], reverse=True)
@@ -448,7 +452,11 @@ def print_read_depth_summary(summary, output, verbose=False, genome_only=False):
                     pound_count = int(32.0 * depth / summary[chrom][D_MAX]) if summary[chrom][D_MAX] != 0 else 0
                     print("\t\t\t{} {} {}".format(id, '#' * pound_count, depth), file=output)
 
-            if chrom != GENOME_KEY and summary[chrom][D_ALL_DEPTH_BINS] is not None:
+            if chrom != GENOME_KEY and summary[chrom][D_DEPTH_BINS] is not None:
+                print("\t\tread depth at above intervals:", file=output)
+                print_log_binned_data(summary[chrom][D_DEPTH_BINS], output)
+                
+            if chrom != GENOME_KEY and summary[chrom][D_LOG_DEPTH_BINS] is not None:
                 print("\t\tread depth log_2 at above intervals:", file=output)
                 print_log_binned_data(log_depth_bins, output)
                 # max_bucket = max(list(filter(lambda x: log_depth_bins[x] != 0, [x for x in range(16)])))

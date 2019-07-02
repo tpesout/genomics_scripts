@@ -107,7 +107,7 @@ def main():
         large_piece_chunks = []
         curr_idx = 0
         while curr_idx < len(pieces):
-            large_piece_chunk = "{}.{}.bam"
+            large_piece_chunk = "{}.{}.bam".format(args.output, curr_idx)
             large_piece_chunks.append(large_piece_chunk)
             current_pieces = pieces[curr_idx:min(curr_idx + 1000, len(pieces))]
             merge_cmd = ['samtools', 'merge', '-@', str(args.threads), large_piece_chunk]
