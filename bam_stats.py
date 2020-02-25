@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import print_function
 import argparse
 import glob
@@ -455,7 +455,7 @@ def print_read_depth_summary(summary, output, verbose=False, genome_only=False):
             if chrom != GENOME_KEY and summary[chrom][D_DEPTH_BINS] is not None:
                 print("\t\tread depth at above intervals:", file=output)
                 print_log_binned_data(summary[chrom][D_DEPTH_BINS], output)
-                
+
             if chrom != GENOME_KEY and summary[chrom][D_LOG_DEPTH_BINS] is not None:
                 print("\t\tread depth log_2 at above intervals:", file=output)
                 print_log_binned_data(log_depth_bins, output)

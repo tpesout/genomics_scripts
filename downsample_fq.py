@@ -24,6 +24,8 @@ def parse_args():
                        help='Only consider reads with this length or greater')
     parser.add_argument('--max_read_length', '-L', dest='max_read_length', default=None, type=int,
                        help='Only consider reads with this length or lesser')
+    parser.add_argument('--min_quality', '-q', dest='min_quality', default=None, type=int,
+                       help='Only include reads with this average quality or greater')
 
     # whether to keep reads
     parser.add_argument('--read_ratio', '-a', dest='read_ratio', default=None, type=float,
@@ -109,8 +111,9 @@ def main():
     filters = list()
     if args.min_read_length is not None: filters.append("min length {}".format(args.min_read_length))
     if args.max_read_length is not None: filters.append("max length {}".format(args.max_read_length))
-    def filter_read(read):
-        if type(read) == list: read = read[1]
+    def filter_read(read_data):
+        assert type(read_data) == list
+        read = read_data[1]
         read_length = len(read)
         if args.min_read_length is not None and read_length < args.min_read_length: return False
         if args.max_read_length is not None and read_length > args.max_read_length: return False

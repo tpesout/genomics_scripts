@@ -103,17 +103,18 @@ def main():
     all_pieces = []
     all_pieces.extend(pieces)
     print("Merging into {}".format(args.output))
-    if len(pieces) > 1000:
+    merge_chunk_size = 256
+    if len(pieces) > merge_chunk_size:
         large_piece_chunks = []
         curr_idx = 0
         while curr_idx < len(pieces):
-            large_piece_chunk = "{}.{}.bam".format(args.output, curr_idx)
+            large_piece_chunk = "{}.merge_{}.bam".format(args.output, curr_idx)
             large_piece_chunks.append(large_piece_chunk)
-            current_pieces = pieces[curr_idx:min(curr_idx + 1000, len(pieces))]
+            current_pieces = pieces[curr_idx:min(curr_idx + merge_chunk_size, len(pieces))]
             merge_cmd = ['samtools', 'merge', '-@', str(args.threads), large_piece_chunk]
             merge_cmd.extend(current_pieces)
             subprocess.check_call(merge_cmd)
-            curr_idx += 1000
+            curr_idx += merge_chunk_size
 
         all_pieces.extend(large_piece_chunks)
         pieces = large_piece_chunks
