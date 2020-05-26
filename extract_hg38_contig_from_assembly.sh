@@ -1,9 +1,10 @@
 #!/bin/bash
 
 export ASM=$1
-export TC=10
+export TC=8
 export CHR=chrX
-export HG38=/home/ubuntu/data/human/reference/hg38/hg38.fa
+export HG38=/home/tpesout/data/reference/hg38.fa
+#export HG38=/home/ubuntu/data/human/reference/hg38/hg38.fa
 
 minimap2 -ax asm20 -t $TC $HG38 $ASM | samtools view -hb >$ASM.unsorted.bam
 samtools sort -@ $TC $ASM.unsorted.bam | samtools view -hb >$ASM.bam
