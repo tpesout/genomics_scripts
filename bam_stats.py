@@ -52,7 +52,7 @@ D_LOG_DEPTH_BINS = "all_depth_bins"
 D_DEPTH_BINS = "depth_bins"
 D_SPACING = "depth_spacing"
 D_START_IDX = "depth_start_idx"
-D_RANGE = "depth_range"
+D_RANGE = "region"
 
 # misc
 GENOME_KEY = "genome"
@@ -83,7 +83,7 @@ def parse_args(args = None):
                         help='Print nothing')
     parser.add_argument('--depth_spacing', '-s', dest='depth_spacing', action='store', default=1000, type=int,
                         help='How far to sample read data')
-    parser.add_argument('--depth_range', '-r', dest='depth_range', action='store', default=None,
+    parser.add_argument('--region', '-r', dest='region', action='store', default=None,
                         help='Whether to only calculate depth within a range, ie: \'100000-200000\'')
     parser.add_argument('--filter_secondary', dest='filter_secondary', action='store_true', default=False,
                         help='Filter secondary alignments out')
@@ -259,7 +259,7 @@ def print_read_length_summary(summary, output, verbose=False, genome_only=False)
                 print_log_binned_data(summary[chrom][L_LOG_LENGTH_BUCKETS_ALT], output)
 
 
-def  get_read_depth_summary(read_summaries, spacing, included_range=None):
+def  get_read_depth_summary(read_summaries, spacing, region=None):
     S, E = 's', 'e'
 
     # get reads which start or end on spacing interval
@@ -308,9 +308,9 @@ def  get_read_depth_summary(read_summaries, spacing, included_range=None):
     depth_map = {pos: depth for pos, depth in zip(depth_positions, depths)}
 
     # check range before outputting summary
-    if included_range is not None:
+    if region is not None:
         # get range
-        included_range = list(map(int, included_range.split("-")))
+        included_range = list(map(int, region.split(':')[-1].split("-")))
         if len(included_range) != 2:
             raise Exception("Malformed depth range: '{}'".format("-".join(map(str, included_range))))
         range_start = int(included_range[0]/spacing)
@@ -437,21 +437,22 @@ def print_read_depth_summary(summary, output, verbose=False, genome_only=False):
             log_depth_pairs.sort(key=lambda x: x[1], reverse=True)
             print("\t\tmost frequent read depths [floor(log2(depth))]:", file=output)
             for i in range(0,min(len(list(filter(lambda x: x[1] != 0, log_depth_pairs))), 3)):
-                print("\t\t\t#{}: depth:{} count:{} ({}%)".format(i + 1, log_depth_pairs[i][0], log_depth_pairs[i][1],
-                                                                  int(100.0 * log_depth_pairs[i][1] / total_depths)),
+                print("\t\t\t#{}: depth:{}({}) count:{} ({}%)".format(i + 1, log_depth_pairs[i][0],
+                                                                      2**log_depth_pairs[i][0], log_depth_pairs[i][1],
+                                                                      int(100.0 * log_depth_pairs[i][1] / total_depths)),
                       file=output)
 
-        if verbose:
-            if chrom != GENOME_KEY and summary[chrom][D_RANGE] is not None:
-                print("\t\tdepths with spacing {}{}:".format(summary[chrom][D_SPACING],
-                                                   "" if summary[chrom][D_RANGE] is None else
-                                                   ", and range {}".format(summary[chrom][D_RANGE])), file=output)
-                for idx in summary[chrom][D_ALL_DEPTH_POSITIONS]:
-                    depth = summary[chrom][D_ALL_DEPTH_MAP][idx]
-                    id = "%4d:" % idx
-                    pound_count = int(32.0 * depth / summary[chrom][D_MAX]) if summary[chrom][D_MAX] != 0 else 0
-                    print("\t\t\t{} {} {}".format(id, '#' * pound_count, depth), file=output)
+        if chrom != GENOME_KEY and summary[chrom][D_RANGE] is not None:
+            print("\t\tdepths with spacing {}{}:".format(summary[chrom][D_SPACING],
+                                                         "" if summary[chrom][D_RANGE] is None else
+                                                         ", and range {}".format(summary[chrom][D_RANGE])), file=output)
+            for idx in summary[chrom][D_ALL_DEPTH_POSITIONS]:
+                depth = summary[chrom][D_ALL_DEPTH_MAP][idx]
+                id = "{:12d}:".format(idx * summary[chrom][D_SPACING])
+                pound_count = int(32.0 * depth / summary[chrom][D_MAX]) if summary[chrom][D_MAX] != 0 else 0
+                print("\t\t\t{} {} {}".format(id, '#' * pound_count, depth), file=output)
 
+        if verbose:
             if chrom != GENOME_KEY and summary[chrom][D_DEPTH_BINS] is not None:
                 print("\t\tread depth at above intervals:", file=output)
                 print_log_binned_data(summary[chrom][D_DEPTH_BINS], output)
@@ -511,7 +512,10 @@ def main(args = None):
         try:
             if not args.silent: print("Read {}:".format(alignment_filename))
             samfile = pysam.AlignmentFile(alignment_filename, 'rb' if alignment_filename.endswith("bam") else 'r')
-            for read in samfile.fetch():
+            region_chrom=None if args.region is None else args.region.split(":")[0]
+            region_start=None if args.region is None else int(args.region.split(":")[1].split("-")[0])
+            region_end=None if args.region is None else int(args.region.split(":")[1].split("-")[1])
+            for read in (samfile.fetch() if args.region is None else samfile.fetch(region_chrom, region_start, region_end)):
                 read_count += 1
                 summary = get_read_summary(read)
                 read_summaries.append(summary)
@@ -587,7 +591,7 @@ def main(args = None):
             length_summaries[alignment_filename][chromosome] = get_read_length_summary(chromosome_reads)
             depth_summaries[alignment_filename][chromosome] = get_read_depth_summary(chromosome_reads,
                                                                                      spacing=args.depth_spacing,
-                                                                                     included_range=args.depth_range)
+                                                                                     region=args.region)
 
         # whole file summaries
         bam_summaries[alignment_filename][GENOME_KEY] = {

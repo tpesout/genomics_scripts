@@ -36,6 +36,10 @@ def parse_args(args = None):
                        help='File describing chunk positions')
     parser.add_argument('--figure_name', '-f', dest='figure_name', default=None, required=False, type=str,
                        help='Figure name (will save if set)')
+    parser.add_argument('--figure_name_bam', '-F', dest='figure_name_bam', default=False, required=False, action='store_true',
+                       help='Figure name should be based off of BAM file (-f overrides this)')
+    parser.add_argument('--untagged_only', '-u', dest='untagged_only', default=False, required=False, action='store_true',
+                        help='Only plot untagged reads')
 
     return parser.parse_args() if args is None else parser.parse_args(args)
 
@@ -199,6 +203,7 @@ def main(args = None):
     position_classifications = collections.defaultdict(
         lambda : collections.defaultdict(lambda : 0)
     )
+    analyzed_lengths = []
     try:
         samfile = pysam.AlignmentFile(args.margin_input_bam, 'rb' if args.margin_input_bam.endswith("bam") else 'r')
         for read in samfile.fetch():
@@ -212,13 +217,19 @@ def main(args = None):
             spos = read.reference_start
             epos = read.reference_end
             classifier = UNCLASSIFIED
-            if id in truth_all:
+            if args.untagged_only:
+                if hp == 0:
+                    classifier = CORRECT
+            elif id in truth_all and hp != 0:
                 if hp == 1 and id in truth_h1:
                     classifier = CORRECT
                 elif hp == 2 and id in truth_h2:
                     classifier = CORRECT
                 else:
                     classifier = INCORRECT
+
+            if classifier != UNCLASSIFIED:
+                analyzed_lengths.append(epos - spos)
 
             while spos <= epos:
                 pos = int(spos / SPACING)
@@ -234,8 +245,22 @@ def main(args = None):
     if args.result_vcf is not None:
         save_fp_fn_counts(args.result_vcf, position_classifications)
 
+    print("Classified Read Lengths:")
+    print("\tmean:   {}".format(np.mean(analyzed_lengths)))
+    print("\tmedain: {}".format(np.median(analyzed_lengths)))
+    analyzed_lengths.sort()
+    len_total = sum(analyzed_lengths)
+    len_curr = 0
+    for l in analyzed_lengths:
+        len_curr += l
+        if len_curr > len_total/2:
+            print("\tN50:    {}".format(l))
+            break
 
-    plottit(position_classifications, chunk_boundaries=chunk_boundaries, figName=args.figure_name,
+    figName = args.figure_name
+    if figName is None and args.figure_name_bam:
+        figName = args.margin_input_bam + ".png"
+    plottit(position_classifications, chunk_boundaries=chunk_boundaries, figName=figName,
             has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None)
 
 
