@@ -34,6 +34,8 @@ def parse_args(args = None):
                        help='VCF containing TP/FP/FN classified sites')
     parser.add_argument('--chunks', '-c', dest='chunks', default=None, required=False, type=str,
                        help='File describing chunk positions')
+    parser.add_argument('--title', '-t', dest='title', default=None, required=False, type=str,
+                       help='Figure title')
     parser.add_argument('--figure_name', '-f', dest='figure_name', default=None, required=False, type=str,
                        help='Figure name (will save if set)')
     parser.add_argument('--figure_name_bam', '-F', dest='figure_name_bam', default=False, required=False, action='store_true',
@@ -56,7 +58,8 @@ def smooth_values(values,size=5,should_sum=False):
     return new_values
 
 
-def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None):
+def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None,
+            title=None):
     start_idx = min(classification_data.keys())
     end_idx = max(classification_data.keys())
     x = []
@@ -90,6 +93,7 @@ def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf
     fpfn = smooth_values(raw_fpfn, size=5, should_sum=True)
     log_fpfn = [0 if h == 0 else 1 if h == 1 else np.log2(h) for h in fpfn]
     avg_correct = np.mean(list(filter(lambda x: x is not None, correct_ratio)))
+    std_correct = np.std(list(filter(lambda x: x is not None, correct_ratio)))
     avg_depth = np.mean(total)
     top_y_coord = avg_depth * 2
 
@@ -123,6 +127,8 @@ def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf
     # cax = divider.append_axes("right", size="3%", pad=0.5)
     # fig.colorbar(c, cax=cax, orientation='vertical')
     ax2.plot(x, [avg_correct for _ in x], color='black', alpha=.5, linewidth=lw)
+    log("Correct ratio:\n\tAvg: {}\n\tStd: {}".format(avg_correct, std_correct))
+    ax2.annotate("{:5.2f}".format(avg_correct), (x[0], avg_correct+1), fontfamily='monospace', fontsize=10)
     if chunk_boundaries is not None:
         for cb in chunk_boundaries:
             ax2.axvline(x=int(cb/SPACING), linewidth=lw, alpha=.5, color="black", linestyle="dotted")
@@ -133,22 +139,14 @@ def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf
     ax3.plot(x, unclassified, color='grey', linewidth=lw)
     ax3.set_ylim(-.05 * top_y_coord, top_y_coord)
 
+    if title is not None:
+        ax1.set_title(title)
     fig.tight_layout()
     fig.set_size_inches(18, 12)
     if figName is not None:
         plt.savefig(figName)
     plt.show()
     plt.close()
-
-    # second one
-    # df = pd.DataFrame.from_dict({'het_sites':raw_hets,'nearby_hets':hets,'log_nearby_hets':log_hets,'correctness':correct_ratio})
-    # df = df[df['nearby_hets'] > 0]
-    # sns.jointplot(x='nearby_hets',y='correctness',data=df,stat_func=pearsonr,alpha=.1)
-    # plt.show()
-    # plt.close()
-    #
-    # sns.jointplot(x='log_nearby_hets',y='correctness',data=df,stat_func=pearsonr,alpha=.1)
-    # plt.show()
 
 def save_het_counts(vcf_file, position_classifications):
     with open(vcf_file, 'r') as vcf:
@@ -245,23 +243,24 @@ def main(args = None):
     if args.result_vcf is not None:
         save_fp_fn_counts(args.result_vcf, position_classifications)
 
-    print("Classified Read Lengths:")
-    print("\tmean:   {}".format(np.mean(analyzed_lengths)))
-    print("\tmedain: {}".format(np.median(analyzed_lengths)))
+    log("Classified Read Lengths:")
+    log("\tmean:   {}".format(np.mean(analyzed_lengths)))
+    log("\tmedain: {}".format(np.median(analyzed_lengths)))
     analyzed_lengths.sort()
     len_total = sum(analyzed_lengths)
     len_curr = 0
     for l in analyzed_lengths:
         len_curr += l
         if len_curr > len_total/2:
-            print("\tN50:    {}".format(l))
+            log("\tN50:    {}".format(l))
             break
 
     figName = args.figure_name
     if figName is None and args.figure_name_bam:
         figName = args.margin_input_bam + ".png"
     plottit(position_classifications, chunk_boundaries=chunk_boundaries, figName=figName,
-            has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None)
+            has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None,
+            title=args.title)
 
 
 

@@ -308,6 +308,7 @@ def  get_read_depth_summary(read_summaries, spacing, region=None):
     depth_map = {pos: depth for pos, depth in zip(depth_positions, depths)}
 
     # check range before outputting summary
+    included_range = None
     if region is not None:
         # get range
         included_range = list(map(int, region.split(':')[-1].split("-")))
@@ -360,9 +361,10 @@ def  get_read_depth_summary(read_summaries, spacing, region=None):
         D_LOG_DEPTH_BINS: log_depth_bins,
         D_DEPTH_BINS: depth_bins,
         D_SPACING: spacing,
-        D_START_IDX: start_idx,
-        D_RANGE: included_range
+        D_START_IDX: start_idx
     }
+    if included_range is not None:
+        summary[D_RANGE] = included_range
 
     return summary
 
