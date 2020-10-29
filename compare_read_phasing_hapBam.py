@@ -123,20 +123,28 @@ def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf
             means.append(np.mean(list(filter(lambda x: x!=0, log_fpfn))))
         ax2point5.set_ylim(0, 3 * max(means))
     c = ax2.scatter(x, correct_ratio, c=correct_ratio, s=lw, cmap=plt.cm.get_cmap('RdYlGn'), alpha=.5)
-    # divider = make_axes_locatable(ax2)
-    # cax = divider.append_axes("right", size="3%", pad=0.5)
-    # fig.colorbar(c, cax=cax, orientation='vertical')
     ax2.plot(x, [avg_correct for _ in x], color='black', alpha=.5, linewidth=lw)
     log("Correct ratio:\n\tAvg: {}\n\tStd: {}".format(avg_correct, std_correct))
-    ax2.annotate("{:5.2f}".format(avg_correct), (x[0], avg_correct+1), fontfamily='monospace', fontsize=10)
+    ax2.annotate("{:5.2f}".format(avg_correct), (x[0], avg_correct+1), fontfamily='monospace', fontsize=12,weight="bold")
     if chunk_boundaries is not None:
         for cb in chunk_boundaries:
             ax2.axvline(x=int(cb/SPACING), linewidth=lw, alpha=.5, color="black", linestyle="dotted")
     ax2.set_ylim(45, 105)
 
-    ax3.set_ylabel('Depth, Unclassified')
-    ax3.plot(x, total, color='black', linewidth=lw)
-    ax3.plot(x, unclassified, color='grey', linewidth=lw)
+    ax3.set_ylabel('Classified Depth')
+    ax3.plot(x, total, color='grey', linewidth=lw)
+    ax3.plot(x, unclassified, color='lightgrey', linewidth=lw)
+
+    avg_classified = np.mean(list(filter(lambda x: x != 0, total)))
+    ax3.plot(x, [avg_classified for _ in x], color='black', alpha=.5, linewidth=lw)
+    log("Total Classified:\n\tAvg: {}\n\tStd: {}".format(avg_classified, np.std(total)))
+    ax3.annotate("{:3d}x".format(int(avg_classified)), (x[0], avg_classified+1), fontfamily='monospace', fontsize=12,weight="bold")
+
+    avg_unclassified = np.mean(list(filter(lambda x: x != 0, unclassified)))
+    ax3.plot(x, [avg_unclassified for _ in x], color='black', alpha=.5, linewidth=lw)
+    log("Total Unknown:\n\tAvg: {}\n\tStd: {}".format(avg_unclassified, np.std(unclassified)))
+    ax3.annotate("{:3d}x".format(int(avg_unclassified)), (x[0], avg_unclassified+1), fontfamily='monospace', fontsize=12,weight="bold")
+
     ax3.set_ylim(-.05 * top_y_coord, top_y_coord)
 
     if title is not None:
