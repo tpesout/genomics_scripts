@@ -34,6 +34,8 @@ def parse_args(args = None):
                        help='VCF containing TP/FP/FN classified sites')
     parser.add_argument('--chunks', '-c', dest='chunks', default=None, required=False, type=str,
                        help='File describing chunk positions')
+    parser.add_argument('--phaseset_bed', '-p', dest='phaseset_bed', default=None, required=False, type=str,
+                       help='File describing phase sets')
     parser.add_argument('--title', '-t', dest='title', default=None, required=False, type=str,
                        help='Figure title')
     parser.add_argument('--figure_name', '-f', dest='figure_name', default=None, required=False, type=str,
@@ -58,7 +60,7 @@ def smooth_values(values,size=5,should_sum=False):
     return new_values
 
 
-def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None,
+def plottit(classification_data, figName=None, phasesets=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None,
             title=None):
     start_idx = min(classification_data.keys())
     end_idx = max(classification_data.keys())
@@ -77,6 +79,7 @@ def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf
         ro = classification_data[i][INCORRECT]
         un = classification_data[i][UNCLASSIFIED]
         ht = classification_data[i][HETS]
+
         right.append(ri)
         rong.append(-1 * ro)
         unclassified.append(un)
@@ -131,19 +134,32 @@ def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf
             ax2.axvline(x=int(cb/SPACING), linewidth=lw, alpha=.5, color="black", linestyle="dotted")
     ax2.set_ylim(45, 105)
 
-    ax3.set_ylabel('Classified Depth')
-    ax3.plot(x, total, color='grey', linewidth=lw)
-    ax3.plot(x, unclassified, color='lightgrey', linewidth=lw)
+    if phasesets is not None:
+        top = True
+        for ps in phasesets:
+            ax2.plot(range(ps[0] // SPACING, ps[1] // SPACING),
+                     [48 if top else 46 for _ in range(ps[0] // SPACING, ps[1] // SPACING)],
+                     color='black', alpha=.65, linewidth=2)
+            ax1.plot(range(ps[0] // SPACING, ps[1] // SPACING),
+                     [2 if top else -2 for _ in range(ps[0] // SPACING, ps[1] // SPACING)],
+                     color='black', alpha=.65, linewidth=2)
+            if ps[0] // SPACING != ps[1] // SPACING:
+                top = not top
 
-    avg_classified = np.mean(list(filter(lambda x: x != 0, total)))
-    ax3.plot(x, [avg_classified for _ in x], color='black', alpha=.5, linewidth=lw)
-    log("Total Classified:\n\tAvg: {}\n\tStd: {}".format(avg_classified, np.std(total)))
-    ax3.annotate("{:3d}x".format(int(avg_classified)), (x[0], avg_classified+1), fontfamily='monospace', fontsize=12,weight="bold")
+
+    ax3.set_ylabel('Classified Depth')
+    ax3.plot(x, unclassified, color='lightgrey', linewidth=lw)
+    ax3.plot(x, total, color='grey', linewidth=lw)
 
     avg_unclassified = np.mean(list(filter(lambda x: x != 0, unclassified)))
     ax3.plot(x, [avg_unclassified for _ in x], color='black', alpha=.5, linewidth=lw)
     log("Total Unknown:\n\tAvg: {}\n\tStd: {}".format(avg_unclassified, np.std(unclassified)))
     ax3.annotate("{:3d}x".format(int(avg_unclassified)), (x[0], avg_unclassified+1), fontfamily='monospace', fontsize=12,weight="bold")
+
+    avg_classified = np.mean(list(filter(lambda x: x != 0, total)))
+    ax3.plot(x, [avg_classified for _ in x], color='black', alpha=.5, linewidth=lw)
+    log("Total Classified:\n\tAvg: {}\n\tStd: {}".format(avg_classified, np.std(total)))
+    ax3.annotate("{:3d}x".format(int(avg_classified)), (x[0], avg_classified+1), fontfamily='monospace', fontsize=12,weight="bold")
 
     ax3.set_ylim(-.05 * top_y_coord, top_y_coord)
 
@@ -156,12 +172,14 @@ def plottit(classification_data, figName=None, has_het_vcf=False, has_result_vcf
     plt.show()
     plt.close()
 
+
 def save_het_counts(vcf_file, position_classifications):
     with open(vcf_file, 'r') as vcf:
         for line in vcf:
             if line.startswith("#"): continue
             pos = int(line.split("\t")[1])
             position_classifications[int(pos/SPACING)][HETS] += 1
+
 
 def save_fp_fn_counts(vcf_file, position_classifications):
     with open(vcf_file, 'r') as vcf:
@@ -172,6 +190,16 @@ def save_fp_fn_counts(vcf_file, position_classifications):
                 position_classifications[int(pos/SPACING)][FP] += 1
             # if "FN" in line:
             #     position_classifications[int(pos/SPACING)][FN] += 1
+
+
+def read_phaseset_bed(bed_file):
+    phasesets = list()
+    with open(bed_file) as bed:
+        for line in bed:
+            parts = line.split("\t")
+            assert(len(parts) >= 3)
+            phasesets.append((int(parts[1]), int(parts[2])))
+    return phasesets
 
 
 def main(args = None):
@@ -266,9 +294,11 @@ def main(args = None):
     figName = args.figure_name
     if figName is None and args.figure_name_bam:
         figName = args.margin_input_bam + ".png"
-    plottit(position_classifications, chunk_boundaries=chunk_boundaries, figName=figName,
+
+    phasesets = None if args.phaseset_bed is None else read_phaseset_bed(args.phaseset_bed)
+    plottit(position_classifications, chunk_boundaries=chunk_boundaries, phasesets=phasesets, figName=figName,
             has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None,
-            title=args.title)
+            title=args.margin_input_bam if args.title is None and args.figure_name_bam else args.title)
 
 
 
