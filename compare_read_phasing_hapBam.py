@@ -135,17 +135,23 @@ def plottit(classification_data, figName=None, phasesets=None, has_het_vcf=False
     ax2.set_ylim(45, 105)
 
     if phasesets is not None:
+        concordancy_in_phasesets = list()
         top = True
         for ps in phasesets:
-            ax2.plot(range(ps[0] // SPACING, ps[1] // SPACING),
-                     [48 if top else 46 for _ in range(ps[0] // SPACING, ps[1] // SPACING)],
+            start = ps[0] // SPACING
+            end = ps[1] // SPACING
+            ax2.plot(range(start, end), [48 if top else 46 for _ in range(start, end)],
                      color='black', alpha=.65, linewidth=2)
-            ax1.plot(range(ps[0] // SPACING, ps[1] // SPACING),
-                     [2 if top else -2 for _ in range(ps[0] // SPACING, ps[1] // SPACING)],
+            ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
                      color='black', alpha=.65, linewidth=2)
-            if ps[0] // SPACING != ps[1] // SPACING:
+            if start != end:
                 top = not top
-
+                concordancy_in_phasesets.extend(list(filter(lambda x: x is not None, correct_ratio[start:end])))
+        avg_ps_correct = np.mean(concordancy_in_phasesets)
+        log("Correct ratio in phasesets:\n\tAvg: {}\n\tStd: {}".format(avg_ps_correct,
+                                                                       np.std(concordancy_in_phasesets)))
+        # ax2.plot(x, [avg_ps_correct for _ in x], color='black', alpha=.5, linewidth=lw)
+        # ax2.annotate("{:5.2f} (Phaseset)".format(avg_ps_correct), (x[0], avg_ps_correct+1), fontfamily='monospace', fontsize=12,weight="bold")
 
     ax3.set_ylabel('Classified Depth')
     ax3.plot(x, unclassified, color='lightgrey', linewidth=lw)
