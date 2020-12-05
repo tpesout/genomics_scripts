@@ -15,6 +15,7 @@ HP_TAG = "HP"
 UNCLASSIFIED = 'u'
 CORRECT = 'c'
 INCORRECT = 'i'
+UNKNOWN = 'k'
 HETS = 'h'
 FP = 'p'
 FN = 'n'
@@ -42,8 +43,8 @@ def parse_args(args = None):
                        help='Figure name (will save if set)')
     parser.add_argument('--figure_name_bam', '-F', dest='figure_name_bam', default=False, required=False, action='store_true',
                        help='Figure name should be based off of BAM file (-f overrides this)')
-    parser.add_argument('--untagged_only', '-u', dest='untagged_only', default=False, required=False, action='store_true',
-                        help='Only plot untagged reads')
+    parser.add_argument('--max_depth', '-d', dest='max_depth', default=72, required=False, type=int,
+                       help='What depth should be used on y axes')
 
     return parser.parse_args() if args is None else parser.parse_args(args)
 
@@ -60,14 +61,16 @@ def smooth_values(values,size=5,should_sum=False):
     return new_values
 
 
-def plottit(classification_data, figName=None, phasesets=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None,
+def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None,
             title=None):
     start_idx = min(classification_data.keys())
     end_idx = max(classification_data.keys())
     x = []
     right = []
     rong = []
-    total = []
+    total_classified = []
+    total_reads = []
+    unknown = []
     unclassified = []
     correct_ratio = []
     raw_hets = []
@@ -77,36 +80,47 @@ def plottit(classification_data, figName=None, phasesets=None, has_het_vcf=False
         x.append(i)
         ri = classification_data[i][CORRECT]
         ro = classification_data[i][INCORRECT]
-        un = classification_data[i][UNCLASSIFIED]
+        unc = classification_data[i][UNCLASSIFIED]
+        unk = classification_data[i][UNKNOWN]
         ht = classification_data[i][HETS]
 
         right.append(ri)
         rong.append(-1 * ro)
-        unclassified.append(un)
-        total.append(ri + ro + un)
+        unknown.append(unk)
+        unclassified.append(unk)
+        total_classified.append(ri + ro + unc)
+        total_reads.append(ri+ro+unc+unk)
         correct_ratio.append(None if ri + ro == 0 else 100*abs(max(ri,ro)/(ri + ro)))
         raw_hets.append(ht)
         fp.append(classification_data[i][FP])
         fn.append(classification_data[i][FN])
-    unclassified = smooth_values(unclassified, size=20)
-    total = smooth_values(total, size=20)
-    hets = smooth_values(raw_hets, size=5, should_sum=True)
-    log_hets = [0 if h == 0 else 1 if h == 1 else np.log2(h) for h in hets]
-    raw_fpfn = list(map(sum, zip(fp, fn)))
-    fpfn = smooth_values(raw_fpfn, size=5, should_sum=True)
-    log_fpfn = [0 if h == 0 else 1 if h == 1 else np.log2(h) for h in fpfn]
+
+    # get averages
+    avg_unclassified = np.mean(list(filter(lambda x: x != 0, unknown)))
+    avg_classified = np.mean(list(filter(lambda x: x != 0, total_classified)))
+    avg_total_reads = np.mean(list(filter(lambda x: x != 0, total_reads)))
     avg_correct = np.mean(list(filter(lambda x: x is not None, correct_ratio)))
     std_correct = np.std(list(filter(lambda x: x is not None, correct_ratio)))
-    avg_depth = np.mean(total)
-    top_y_coord = avg_depth * 2
 
+    # smooth values
+    smoothed_unknown = smooth_values(unknown, size=20)
+    smoothed_total_classified = smooth_values(total_classified, size=20)
+    smoothed_total_reads = smooth_values(total_reads, size=20)
+    smoothed_hets = smooth_values(raw_hets, size=5, should_sum=True)
+    smoothed_fpfn = smooth_values(list(map(sum, zip(fp, fn))), size=5, should_sum=True)
+
+    # log scale stuff (for variants)
+    log_hets = [0 if h == 0 else 1 if h == 1 else np.log2(h) for h in smoothed_hets]
+    log_fpfn = [0 if h == 0 else 1 if h == 1 else np.log2(h) for h in smoothed_fpfn]
+
+    # get plots
     fig, ((ax1, ax2, ax3)) = plt.subplots(nrows=3,ncols=1,sharex='all',gridspec_kw={'height_ratios': [2, 1, 1]})
     lw = .5
 
     ax1.set_ylabel('Phasing Partitions')
     ax1.fill_between(x, right, color='tab:red', linewidth=lw)
     ax1.fill_between(x, rong, color='tab:blue', linewidth=lw)
-    ax1.set_ylim(-1 * top_y_coord, top_y_coord)
+    ax1.set_ylim(-1 * args.max_depth, args.max_depth)
     if has_het_vcf:
         sizes = [(1 if ht == 0 else min(256, lw/16*(4**ht))) for ht in log_hets]
         ax1.scatter(x, [0 for _ in x], color='black', s=sizes, alpha=.05)
@@ -154,20 +168,23 @@ def plottit(classification_data, figName=None, phasesets=None, has_het_vcf=False
         # ax2.annotate("{:5.2f} (Phaseset)".format(avg_ps_correct), (x[0], avg_ps_correct+1), fontfamily='monospace', fontsize=12,weight="bold")
 
     ax3.set_ylabel('Classified Depth')
-    ax3.plot(x, unclassified, color='lightgrey', linewidth=lw)
-    ax3.plot(x, total, color='grey', linewidth=lw)
+    ax3.plot(x, smoothed_unknown, color='lightgrey', linewidth=lw)
+    ax3.plot(x, smoothed_total_classified, color='grey', linewidth=lw)
+    ax3.plot(x, smoothed_total_reads, color='black')
 
-    avg_unclassified = np.mean(list(filter(lambda x: x != 0, unclassified)))
     ax3.plot(x, [avg_unclassified for _ in x], color='black', alpha=.5, linewidth=lw)
-    log("Total Unknown:\n\tAvg: {}\n\tStd: {}".format(avg_unclassified, np.std(unclassified)))
-    ax3.annotate("{:3d}x".format(int(avg_unclassified)), (x[0], avg_unclassified+1), fontfamily='monospace', fontsize=12,weight="bold")
+    log("Total Unknown:\n\tAvg: {}\n\tStd: {}".format(avg_unclassified, np.std(unknown)))
+    ax3.annotate("{:3d}x Unknown".format(int(avg_unclassified)), (x[0], avg_unclassified+1), fontfamily='monospace', fontsize=12,weight="bold")
 
-    avg_classified = np.mean(list(filter(lambda x: x != 0, total)))
     ax3.plot(x, [avg_classified for _ in x], color='black', alpha=.5, linewidth=lw)
-    log("Total Classified:\n\tAvg: {}\n\tStd: {}".format(avg_classified, np.std(total)))
-    ax3.annotate("{:3d}x".format(int(avg_classified)), (x[0], avg_classified+1), fontfamily='monospace', fontsize=12,weight="bold")
+    log("Total Classified:\n\tAvg: {}\n\tStd: {}".format(avg_classified, np.std(total_classified)))
+    ax3.annotate("{:3d}x Classified".format(int(avg_classified)), (x[0], avg_classified+1), fontfamily='monospace', fontsize=12,weight="bold")
 
-    ax3.set_ylim(-.05 * top_y_coord, top_y_coord)
+    ax3.plot(x, [avg_total_reads for _ in x], color='black', alpha=.5, linewidth=lw)
+    log("Total Reads:\n\tAvg: {}\n\tStd: {}".format(avg_total_reads, np.std(total_reads)))
+    ax3.annotate("{:3d}x Total Reads".format(int(avg_total_reads)), (x[0], max(avg_total_reads, avg_classified+8)+1), fontfamily='monospace', fontsize=12,weight="bold")
+
+    ax3.set_ylim(-.05 * args.max_depth, args.max_depth)
 
     if title is not None:
         ax1.set_title(title)
@@ -208,6 +225,64 @@ def read_phaseset_bed(bed_file):
     return phasesets
 
 
+def get_position_classifications(bam_location, truth_h1_ids, truth_h2_ids, region=None, verbose=True):
+    # get read phasing pairs
+    samfile = None
+    read_count = 0
+    missing_hp_count = 0
+    position_classifications = collections.defaultdict(
+        lambda : collections.defaultdict(lambda : 0)
+    )
+    analyzed_lengths = []
+    try:
+        samfile = pysam.AlignmentFile(bam_location, 'rb' if bam_location.endswith("bam") else 'r')
+        for read in samfile.fetch(region=region):
+            read_count += 1
+            if not read.has_tag(HP_TAG):
+                missing_hp_count += 1
+                continue
+
+            hp = read.get_tag(HP_TAG)
+            id = read.query_name
+            spos = read.reference_start
+            epos = read.reference_end
+            if hp == 0:
+                classifier = UNCLASSIFIED
+            elif id not in truth_h1_ids and id not in truth_h2_ids:
+                classifier = UNKNOWN
+            elif hp == 1 and id in truth_h1_ids:
+                classifier = CORRECT
+            elif hp == 2 and id in truth_h2_ids:
+                classifier = CORRECT
+            else:
+                classifier = INCORRECT
+
+            if classifier != UNCLASSIFIED:
+                analyzed_lengths.append(epos - spos)
+
+            while spos <= epos:
+                pos = int(spos / SPACING)
+                position_classifications[pos][classifier] += 1
+                spos += SPACING
+    finally:
+        if samfile is not None: samfile.close()
+
+    if verbose:
+        log("Classified Read Lengths{}:".format("" if region is None else " for {}".format(region)))
+        log("\tmean:   {}".format(np.mean(analyzed_lengths)))
+        log("\tmedain: {}".format(np.median(analyzed_lengths)))
+        analyzed_lengths.sort()
+        len_total = sum(analyzed_lengths)
+        len_curr = 0
+        for l in analyzed_lengths:
+            len_curr += l
+            if len_curr > len_total/2:
+                log("\tN50:    {}".format(l))
+                break
+
+    return position_classifications
+
+
 def main(args = None):
     # get our arguments
     args = parse_args() if args is None else parse_args(args)
@@ -236,48 +311,8 @@ def main(args = None):
                 chunk_idx += 1
 
 
-    # get read phasing pairs
-    samfile = None
-    read_count = 0
-    missing_hp_count = 0
-    position_classifications = collections.defaultdict(
-        lambda : collections.defaultdict(lambda : 0)
-    )
-    analyzed_lengths = []
-    try:
-        samfile = pysam.AlignmentFile(args.margin_input_bam, 'rb' if args.margin_input_bam.endswith("bam") else 'r')
-        for read in samfile.fetch():
-            read_count += 1
-            if not read.has_tag(HP_TAG):
-                missing_hp_count += 1
-                continue
-
-            hp = read.get_tag(HP_TAG)
-            id = read.query_name
-            spos = read.reference_start
-            epos = read.reference_end
-            classifier = UNCLASSIFIED
-            if args.untagged_only:
-                if hp == 0:
-                    classifier = CORRECT
-            elif id in truth_all and hp != 0:
-                if hp == 1 and id in truth_h1:
-                    classifier = CORRECT
-                elif hp == 2 and id in truth_h2:
-                    classifier = CORRECT
-                else:
-                    classifier = INCORRECT
-
-            if classifier != UNCLASSIFIED:
-                analyzed_lengths.append(epos - spos)
-
-            while spos <= epos:
-                pos = int(spos / SPACING)
-                position_classifications[pos][classifier] += 1
-                spos += SPACING
-    finally:
-        if samfile is not None: samfile.close()
-
+    # classifiy positions for reads
+    position_classifications = get_position_classifications(args.margin_input_bam, truth_h1, truth_h2)
 
     if args.het_vcf is not None:
         save_het_counts(args.het_vcf, position_classifications)
@@ -285,24 +320,14 @@ def main(args = None):
     if args.result_vcf is not None:
         save_fp_fn_counts(args.result_vcf, position_classifications)
 
-    log("Classified Read Lengths:")
-    log("\tmean:   {}".format(np.mean(analyzed_lengths)))
-    log("\tmedain: {}".format(np.median(analyzed_lengths)))
-    analyzed_lengths.sort()
-    len_total = sum(analyzed_lengths)
-    len_curr = 0
-    for l in analyzed_lengths:
-        len_curr += l
-        if len_curr > len_total/2:
-            log("\tN50:    {}".format(l))
-            break
+
 
     figName = args.figure_name
     if figName is None and args.figure_name_bam:
         figName = args.margin_input_bam + ".png"
 
     phasesets = None if args.phaseset_bed is None else read_phaseset_bed(args.phaseset_bed)
-    plottit(position_classifications, chunk_boundaries=chunk_boundaries, phasesets=phasesets, figName=figName,
+    plottit(position_classifications, args=args, chunk_boundaries=chunk_boundaries, phasesets=phasesets, figName=figName,
             has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None,
             title=args.margin_input_bam if args.title is None and args.figure_name_bam else args.title)
 
