@@ -83,20 +83,21 @@ def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf
         unc = classification_data[i][UNCLASSIFIED]
         unk = classification_data[i][UNKNOWN]
         ht = classification_data[i][HETS]
+        total = ri+ro+unc+unk
 
         right.append(ri)
         rong.append(-1 * ro)
         unknown.append(unk)
         unclassified.append(unk)
         total_classified.append(ri + ro + unc)
-        total_reads.append(ri+ro+unc+unk)
+        total_reads.append(total)
         correct_ratio.append(None if ri + ro == 0 else 100*abs(max(ri,ro)/(ri + ro)))
         raw_hets.append(ht)
         fp.append(classification_data[i][FP])
         fn.append(classification_data[i][FN])
 
     # get averages
-    avg_unclassified = np.mean(list(filter(lambda x: x != 0, unknown)))
+    avg_unclassified = np.mean(list(filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, unknown))))
     avg_classified = np.mean(list(filter(lambda x: x != 0, total_classified)))
     avg_total_reads = np.mean(list(filter(lambda x: x != 0, total_reads)))
     avg_correct = np.mean(list(filter(lambda x: x is not None, correct_ratio)))

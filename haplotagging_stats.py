@@ -222,7 +222,7 @@ def main(args = None):
 
     output_filename = args.output_filename
     if output_filename is None and args.output_filename_from_bam:
-        output_filename = "{}.haplotagging_stats.tsv"
+        output_filename = "{}.haplotagging_stats.tsv".format(os.path.basename(args.input).rstrip(".bam"))
     if output_filename is not None and not output_filename.endswith("tsv"):
         output_filename = "{}.tsv".format(output_filename)
 
