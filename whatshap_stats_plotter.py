@@ -60,6 +60,8 @@ def plot_two_stats(stats, key_x_fn, key_y_fn, label_x=None, label_y=None, figure
             color="grey"
 
         label = filename.replace("HG002.margin._", "").replace(".phased.vcf", "")
+        # print("{}: {}".format(label_x, list(key_x_fn(file_stats))))
+        # print("{}: {}".format(label_y, list(key_y_fn(file_stats))))
         plt.scatter(key_x_fn(file_stats), key_y_fn(file_stats), marker=marker, color=color, label=label, alpha=.3)
 
     if label_x is not None: plt.xlabel(label_x)
@@ -89,8 +91,8 @@ def main():
 
     print("Got {} records from {}".format(len(stats_dict), args.input))
 
-    plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_SWITCH_RATE]), "N50", "Switch Rate")
-    # plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_HAMMING_RATE]), "N50", "Hamming Rate")
+    # plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_SWITCH_RATE]), "N50", "Switch Rate")
+    plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_HAMMING_RATE]), "N50", "Hamming Rate")
 
 
 if __name__ == "__main__":

@@ -53,6 +53,8 @@ def parse_args(args = None):
                        help='Name of output TSV (will write to stdout if not set)')
     parser.add_argument('--output_filename_from_bam', '-O', dest='output_filename_from_bam', default=False, required=False, action='store_true',
                        help='Output TSV filename should be generated from input filename')
+    parser.add_argument('--threads', '-t', dest='threads', default=1, required=False, type=int,
+                       help='Thread count')
 
     return parser.parse_args() if args is None else parser.parse_args(args)
 
@@ -215,7 +217,7 @@ def main(args = None):
     }
 
     log("Running service getting position classifications")
-    total, failure, messages = run_service(classify_chrom_haplotagging_service, chroms, {}, CHROM, 1, service_args, log)
+    total, failure, messages = run_service(classify_chrom_haplotagging_service, chroms, {}, CHROM, args.threads, service_args, log)
     log("Finished position classification service over {} entries with {} failures".format(total, failure))
 
     output_filename = args.output_filename
