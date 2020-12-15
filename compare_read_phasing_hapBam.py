@@ -7,9 +7,7 @@ import matplotlib.pyplot as plt
 import pysam
 import collections
 import numpy as np
-import seaborn as sns
-import pandas as pd
-from scipy.stats import pearsonr
+import os
 
 HP_TAG = "HP"
 UNCLASSIFIED = 'u'
@@ -97,8 +95,8 @@ def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf
         fn.append(classification_data[i][FN])
 
     # get averages
-    avg_unclassified = np.mean(list(filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, unknown))))
-    avg_classified = np.mean(list(filter(lambda x: x != 0, total_classified)))
+    avg_unknown = np.mean(list(map(lambda y: y[1], filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, unknown)))))
+    avg_classified = np.mean(list(map(lambda y: y[1], filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, total_classified)))))
     avg_total_reads = np.mean(list(filter(lambda x: x != 0, total_reads)))
     avg_correct = np.mean(list(filter(lambda x: x is not None, correct_ratio)))
     std_correct = np.std(list(filter(lambda x: x is not None, correct_ratio)))
@@ -169,21 +167,21 @@ def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf
         # ax2.annotate("{:5.2f} (Phaseset)".format(avg_ps_correct), (x[0], avg_ps_correct+1), fontfamily='monospace', fontsize=12,weight="bold")
 
     ax3.set_ylabel('Classified Depth')
-    ax3.plot(x, smoothed_unknown, color='lightgrey', linewidth=lw)
-    ax3.plot(x, smoothed_total_classified, color='grey', linewidth=lw)
-    ax3.plot(x, smoothed_total_reads, color='black')
+    ax3.plot(x, smoothed_unknown, color='red', alpha=.25, linewidth=lw)
+    ax3.plot(x, smoothed_total_classified, color='blue', alpha=.25, linewidth=lw)
+    ax3.plot(x, smoothed_total_reads, color='black', alpha=.25, linewidth=lw)
 
-    ax3.plot(x, [avg_unclassified for _ in x], color='black', alpha=.5, linewidth=lw)
-    log("Total Unknown:\n\tAvg: {}\n\tStd: {}".format(avg_unclassified, np.std(unknown)))
-    ax3.annotate("{:3d}x Unknown".format(int(avg_unclassified)), (x[0], avg_unclassified+1), fontfamily='monospace', fontsize=12,weight="bold")
+    ax3.plot(x, [avg_unknown for _ in x], color='red', alpha=.5, linewidth=lw)
+    log("Total Unknown:\n\tAvg: {}\n\tStd: {}".format(avg_unknown, np.std(unknown)))
+    ax3.annotate("{:3d}x Unknown".format(int(avg_unknown)), (x[0], avg_unknown+1), fontfamily='monospace', color='darkred', fontsize=12, weight="bold")
 
-    ax3.plot(x, [avg_classified for _ in x], color='black', alpha=.5, linewidth=lw)
+    ax3.plot(x, [avg_classified for _ in x], color='blue', alpha=.5, linewidth=lw)
     log("Total Classified:\n\tAvg: {}\n\tStd: {}".format(avg_classified, np.std(total_classified)))
-    ax3.annotate("{:3d}x Classified".format(int(avg_classified)), (x[0], avg_classified+1), fontfamily='monospace', fontsize=12,weight="bold")
+    ax3.annotate("{:3d}x Classified".format(int(avg_classified)), (x[0], avg_classified+1), fontfamily='monospace', color='darkblue', fontsize=12, weight="bold")
 
     ax3.plot(x, [avg_total_reads for _ in x], color='black', alpha=.5, linewidth=lw)
     log("Total Reads:\n\tAvg: {}\n\tStd: {}".format(avg_total_reads, np.std(total_reads)))
-    ax3.annotate("{:3d}x Total Reads".format(int(avg_total_reads)), (x[0], max(avg_total_reads, avg_classified+8)+1), fontfamily='monospace', fontsize=12,weight="bold")
+    ax3.annotate("{:3d}x Total Reads".format(int(avg_total_reads)), (x[0], max(avg_total_reads, avg_classified+8)+1), fontfamily='monospace', color='black', fontsize=12,weight="bold")
 
     ax3.set_ylim(-.05 * args.max_depth, args.max_depth)
 
@@ -298,7 +296,6 @@ def main(args = None):
         for line in fin:
             truth_h2.add(line.split(',')[0].strip())
     log("Found {} truth H1 reads and {} truth H2 reads".format(len(truth_h1), len(truth_h2)))
-    truth_all = truth_h1.union(truth_h2)
 
     # get chunks
     chunk_boundaries = list()
@@ -311,7 +308,6 @@ def main(args = None):
                     chunk_boundaries.append(int(parts[3]))
                 chunk_idx += 1
 
-
     # classifiy positions for reads
     position_classifications = get_position_classifications(args.margin_input_bam, truth_h1, truth_h2)
 
@@ -321,11 +317,9 @@ def main(args = None):
     if args.result_vcf is not None:
         save_fp_fn_counts(args.result_vcf, position_classifications)
 
-
-
     figName = args.figure_name
     if figName is None and args.figure_name_bam:
-        figName = args.margin_input_bam + ".png"
+        figName = os.path.basename(args.margin_input_bam) + ".png"
 
     phasesets = None if args.phaseset_bed is None else read_phaseset_bed(args.phaseset_bed)
     plottit(position_classifications, args=args, chunk_boundaries=chunk_boundaries, phasesets=phasesets, figName=figName,
