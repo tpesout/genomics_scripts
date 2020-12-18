@@ -6,6 +6,7 @@ STATS_CHROM_IDX=1
 STATS_FILENAME_IDX=2
 PAIRWISE_CHROM_IDX=1
 PAIRWISE_FILENAME_IDX=4
+PAIRWISE_COVERED_VARIANTS_IDX=7
 PAIRWISE_ALL_ASSESSED_PAIRS_IDX=8
 PAIRWISE_ALL_SWITCHES_IDX=9
 PAIRWISE_ALL_SWITCH_RATE_IDX=10
@@ -44,6 +45,7 @@ with open(sys.argv[2]) as fin:
         if pairwise_header is None:
             assert(chrom == "chromosome")
             assert(filename == "file_name0")
+            assert(parts[PAIRWISE_COVERED_VARIANTS_IDX] == "covered_variants")
             assert(parts[PAIRWISE_ALL_ASSESSED_PAIRS_IDX] == "all_assessed_pairs")
             assert(parts[PAIRWISE_ALL_SWITCHES_IDX] == "all_switches")
             assert(parts[PAIRWISE_ALL_SWITCH_RATE_IDX] == "all_switch_rate")
@@ -59,14 +61,16 @@ assert (stats_header is not None and pairwise_header is not None)
 
 # calcluate pairwise stats for ALL
 for file in pairwise.keys():
+    covered_variants = sum(map(lambda x: int(x.split("\t")[PAIRWISE_COVERED_VARIANTS_IDX]), pairwise[file].values()))
     all_assessed_pairs = sum(map(lambda x: int(x.split("\t")[PAIRWISE_ALL_ASSESSED_PAIRS_IDX]), pairwise[file].values()))
     all_switches = sum(map(lambda x: int(x.split("\t")[PAIRWISE_ALL_SWITCHES_IDX]), pairwise[file].values()))
     blockwise_hamming = sum(map(lambda x: int(x.split("\t")[PAIRWISE_BLOCKWISE_HAMMING_IDX]), pairwise[file].values()))
     all_switch_rate = all_switches / all_assessed_pairs
-    blockwise_hamming_rate = blockwise_hamming / all_assessed_pairs
+    blockwise_hamming_rate = blockwise_hamming / covered_variants
     pairwise_all_calculated_values = {
         PAIRWISE_CHROM_IDX: "ALL",
         PAIRWISE_FILENAME_IDX: file,
+        PAIRWISE_COVERED_VARIANTS_IDX: str(covered_variants),
         PAIRWISE_ALL_ASSESSED_PAIRS_IDX: str(all_assessed_pairs),
         PAIRWISE_ALL_SWITCHES_IDX: str(all_switches),
         PAIRWISE_ALL_SWITCH_RATE_IDX: str(all_switch_rate),

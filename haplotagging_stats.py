@@ -38,8 +38,10 @@ OUTPUT_TYPES = {
 BAM_LOCATION='bam_location'
 CHROM='chrom'
 
-SPACING = 1000
+UNTAGGED_READS="UTR:"
+TAGGED_READS="TR:"
 
+SPACING = 1000
 
 def parse_args(args = None):
     parser = argparse.ArgumentParser("Compares phasing for reads haplotyped by margin")
@@ -50,9 +52,7 @@ def parse_args(args = None):
     parser.add_argument('--truth_hap2', '-2', dest='truth_hap2', default=None, required=True, type=str,
                        help='Truth Hap2 readset')
     parser.add_argument('--output_filename', '-o', dest='output_filename', default=None, required=False, type=str,
-                       help='Name of output TSV (will write to stdout if not set)')
-    parser.add_argument('--output_filename_from_bam', '-O', dest='output_filename_from_bam', default=False, required=False, action='store_true',
-                       help='Output TSV filename should be generated from input filename')
+                       help='Base of output files (will write to filename based off of input bam if not set)')
     parser.add_argument('--threads', '-t', dest='threads', default=1, required=False, type=int,
                        help='Thread count')
 
@@ -63,7 +63,7 @@ def log(msg):
     print(msg, file=sys.stderr)
 
 
-def get_position_classifications(bam_location, truth_h1_ids, truth_h2_ids, region=None, verbose=True):
+def get_position_classifications_and_lengths(bam_location, truth_h1_ids, truth_h2_ids, region=None, verbose=True):
     # get read phasing pairs
     samfile = None
     read_count = 0
@@ -71,32 +71,36 @@ def get_position_classifications(bam_location, truth_h1_ids, truth_h2_ids, regio
     position_classifications = collections.defaultdict(
         lambda : collections.defaultdict(lambda : 0)
     )
-    analyzed_lengths = []
+    tagged_lengths = []
+    untagged_lengths = []
     try:
         samfile = pysam.AlignmentFile(bam_location, 'rb' if bam_location.endswith("bam") else 'r')
         for read in samfile.fetch(region=region):
             read_count += 1
-            if not read.has_tag(HP_TAG):
-                missing_hp_count += 1
-                continue
-
-            hp = read.get_tag(HP_TAG)
             id = read.query_name
             spos = read.reference_start
             epos = read.reference_end
-            if hp == 0:
+
+            if not read.has_tag(HP_TAG):
+                missing_hp_count += 1
                 classifier = UNCLASSIFIED
-            elif id not in truth_h1_ids and id not in truth_h2_ids:
-                classifier = UNKNOWN
-            elif hp == 1 and id in truth_h1_ids:
-                classifier = CORRECT
-            elif hp == 2 and id in truth_h2_ids:
-                classifier = CORRECT
             else:
-                classifier = INCORRECT
+                hp = read.get_tag(HP_TAG)
+                if hp == 0:
+                    classifier = UNCLASSIFIED
+                elif id not in truth_h1_ids and id not in truth_h2_ids:
+                    classifier = UNKNOWN
+                elif hp == 1 and id in truth_h1_ids:
+                    classifier = CORRECT
+                elif hp == 2 and id in truth_h2_ids:
+                    classifier = CORRECT
+                else:
+                    classifier = INCORRECT
 
             if classifier != UNCLASSIFIED:
-                analyzed_lengths.append(epos - spos)
+                untagged_lengths.append(epos - spos)
+            else:
+                tagged_lengths.append(epos - spos)
 
             while spos <= epos:
                 pos = int(spos / SPACING)
@@ -107,18 +111,18 @@ def get_position_classifications(bam_location, truth_h1_ids, truth_h2_ids, regio
 
     if verbose:
         log("Classified Read Lengths{}:".format("" if region is None else " for {}".format(region)))
-        log("\tmean:   {}".format(np.mean(analyzed_lengths)))
-        log("\tmedain: {}".format(np.median(analyzed_lengths)))
-        analyzed_lengths.sort()
-        len_total = sum(analyzed_lengths)
+        log("\tmean:   {}".format(np.mean(tagged_lengths)))
+        log("\tmedian: {}".format(np.median(tagged_lengths)))
+        tagged_lengths.sort()
+        len_total = sum(tagged_lengths)
         len_curr = 0
-        for l in analyzed_lengths:
+        for l in tagged_lengths:
             len_curr += l
             if len_curr > len_total/2:
                 log("\tN50:    {}".format(l))
                 break
 
-    return position_classifications
+    return position_classifications, tagged_lengths, untagged_lengths
 
 
 def classify_chrom_haplotagging_service(work_queue, done_queue, bam_location=None, truth_hap1_loc=None, truth_hap2_loc=None,
@@ -150,8 +154,11 @@ def classify_chrom_haplotagging_service(work_queue, done_queue, bam_location=Non
                 # logging
                 log("[{}] '{}' processing {}".format(service_name, current_process().name, f))
 
-                # put your work here
-                classifications = get_position_classifications(bam_location, truth_h1, truth_h2, region=f[CHROM])
+                # get read data
+                classifications, tagged_lengths, untagged_lengths = get_position_classifications_and_lengths(
+                    bam_location, truth_h1, truth_h2, region=f[CHROM])
+
+                # write classifications
                 for bucket in sorted(classifications.keys()):
                     classification = classifications[bucket]
                     # data
@@ -170,6 +177,12 @@ def classify_chrom_haplotagging_service(work_queue, done_queue, bam_location=Non
 
                     # write it
                     print("\t".join(map(str, [classification[x] for x in OUTPUT_ORDER])), file=fout)
+
+                # write length data
+                for tl in tagged_lengths:
+                    print("{}{}".format(TAGGED_READS, tl), file=fout)
+                for utl in untagged_lengths:
+                    print("{}{}".format(UNTAGGED_READS, utl), file=fout)
 
             except Exception as e:
                 # get error and log it
@@ -220,29 +233,42 @@ def main(args = None):
     total, failure, messages = run_service(classify_chrom_haplotagging_service, chroms, {}, CHROM, args.threads, service_args, log)
     log("Finished position classification service over {} entries with {} failures".format(total, failure))
 
-    output_filename = args.output_filename
-    if output_filename is None and args.output_filename_from_bam:
-        output_filename = "{}.haplotagging_stats.tsv".format(os.path.basename(args.input).rstrip(".bam"))
-    if output_filename is not None and not output_filename.endswith("tsv"):
-        output_filename = "{}.tsv".format(output_filename)
+    output_base = args.output_filename
+    if output_base is None and args.output_filename_from_bam:
+        output_base = os.path.basename(args.input).rstrip(".bam")
+    haplotagging_filename="{}.haplotagging_stats.tsv".format(output_base)
+    tagged_read_lengths_filename="{}.tagged_read_lengths.txt".format(output_base)
+    untagged_read_lengths_filename="{}.untagged_read_lengths.txt".format(output_base)
 
-    out = sys.stdout
+    out_ht = None
+    out_tr = None
+    out_utr = None
     try:
-        if output_filename is not None:
-            out = open(output_filename, 'w')
+        out_ht = open(haplotagging_filename, 'w')
+        out_tr = open(tagged_read_lengths_filename, 'w')
+        out_utr = open(untagged_read_lengths_filename, 'w')
 
         # header
-        print("#" + "\t".join(OUTPUT_ORDER), file=out)
+        print("#" + "\t".join(OUTPUT_ORDER), file=out_ht)
         for filename in messages:
             with open(filename) as fin:
                 for line in fin:
-                    out.write(line)
+                    if line.startswith(UNTAGGED_READS):
+                        out_utr.write(line.lstrip(UNTAGGED_READS))
+                    elif line.startswith(TAGGED_READS):
+                        out_tr.write(line.lstrip(TAGGED_READS))
+                    else:
+                        out_ht.write(line)
             os.remove(filename)
 
 
     finally:
-        if output_filename is not None:
-            out.close()
+        if out_ht is not None:
+            out_ht.close()
+        if out_tr is not None:
+            out_tr.close()
+        if out_utr is not None:
+            out_utr.close()
 
 
 
