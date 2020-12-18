@@ -142,7 +142,7 @@ task coalesceResults {
         done
 
         # merge into one consistent file
-        python3 /root/merge_results.py >~{outputIdentifier}.full.tsv
+        python3 /root/merge_results.py ~{outputIdentifier}.stats.tsv ~{outputIdentifier}.pairwise.tsv >~{outputIdentifier}.full.tsv
 
         # tarball
         tar czvf ~{outputIdentifier}.wh_stats.tar.gz *.wh_stats ~{outputIdentifier}.stats.tsv ~{outputIdentifier}.pairwise.tsv ~{outputIdentifier}.full.tsv
