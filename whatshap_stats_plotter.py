@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import pysam
+import os
 import math
 
 FILE_NAME = "file_name"
@@ -31,35 +32,28 @@ def plot_two_stats(stats, key_x_fn, key_y_fn, label_x=None, label_y=None, figure
         file_stats = stats[filename]
 
         # get marker
-        if "p64-" in filename:
+        if "UL" in filename:
             marker = '*'
-        elif "p48-" in filename:
+        elif "75x" in filename:
             marker = 'p'
-        elif "p32-" in filename:
+        elif "50x" in filename:
             marker = 's'
-        elif "p24-" in filename:
+        elif "25x" in filename:
             marker = '^'
         else:
             marker = "o"
 
-        if "dr025-rsl0." in filename:
-            color="pink"
-        elif "dr025-rsl1e5." in filename:
-            color="red"
-        elif "dr025-rsl1e7." in filename:
-            color="darkred"
-        elif "dr033-rsl0." in filename:
-            color="green"
-        elif "dr05-rsl0." in filename:
-            color="lightblue"
-        elif "dr05-rsl1e5." in filename:
+        if "whatshap_phased" in filename:
             color="blue"
-        elif "dr05-rsl1e7." in filename:
-            color="darkblue"
+        elif "margin_phased" in filename:
+            color="red"
         else:
             color="grey"
 
-        label = filename.replace("HG002.margin._", "").replace(".phased.vcf", "")
+        label = filename.replace("HG001_", "")\
+            .replace("_2_GRCh37_pepper_margin_deepvariant.", " ")\
+            .replace("_guppy422_GRCh37_pepper_margin_deepvariant.", " ")\
+            .replace("_phased.vcf", "")
         # print("{}: {}".format(label_x, list(key_x_fn(file_stats))))
         # print("{}: {}".format(label_y, list(key_y_fn(file_stats))))
         plt.scatter(key_x_fn(file_stats), key_y_fn(file_stats), marker=marker, color=color, label=label, alpha=.3)
@@ -68,7 +62,14 @@ def plot_two_stats(stats, key_x_fn, key_y_fn, label_x=None, label_y=None, figure
     if label_y is not None: plt.ylabel(label_y)
     plt.ticklabel_format(style='plain')
     plt.legend()
+    plt.tight_layout()
+    if figure_name is not None:
+        if not figure_name.endswith(".png"):
+            figure_name += ".png"
+        plt.savefig(figure_name)
+
     plt.show()
+    plt.close()
 
 
 def main():
@@ -82,6 +83,7 @@ def main():
             if header is None:
                 header = line.strip().lstrip("#").split("\t")
                 continue
+            if len(line.strip()) == 0: continue
             parts = line.strip().split("\t")
             assert(len(parts) == len(header))
             sample_stats = dict()
@@ -91,8 +93,14 @@ def main():
 
     print("Got {} records from {}".format(len(stats_dict), args.input))
 
-    # plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_SWITCH_RATE]), "N50", "Switch Rate")
-    plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_HAMMING_RATE]), "N50", "Hamming Rate")
+    fig_name = args.figure_name
+    if fig_name is None and args.figure_name_input:
+        fig_name = ".".join(os.path.basename(args.input).split(".")[:-1])
+
+    plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_SWITCH_RATE]), "N50", "Switch Rate",
+                   figure_name=None if fig_name is None else fig_name+".switch_rate")
+    plot_two_stats(stats_dict, lambda x: int(x[BLOCK_N50]), lambda x: float(x[ALL_HAMMING_RATE]), "N50", "Hamming Rate",
+                   figure_name=None if fig_name is None else fig_name+".hamming_rate")
 
 
 if __name__ == "__main__":

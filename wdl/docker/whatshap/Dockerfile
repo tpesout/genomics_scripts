@@ -8,5 +8,6 @@ RUN apt-get update && \
 RUN pip3 install whatshap==1.0 numpy matplotlib
 
 COPY chr_lengths /root/chr_lengths
+COPY merge_results.py /root/merge_results.py
 
 WORKDIR /data

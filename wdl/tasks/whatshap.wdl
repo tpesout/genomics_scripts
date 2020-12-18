@@ -53,12 +53,26 @@ task whatshapAnalysis {
         OUTPUT=${OUTPUT_DIR}/${OUTPUT_BASE}
         mkdir $OUTPUT_DIR
 
+        QUERY=`basename ~{queryVcf} | sed 's/.gz$//'`
+        TRUTH=`basename ~{truthVcf} | sed 's/.gz$//'`
+        if [[ "~{queryVcf}" =~ ".gz" ]] ; then
+            zcat ~{queryVcf} | sed 's|^\(#[^#].*\t\).*|\1sample|' >$QUERY
+        else
+            cat ~{queryVcf} | sed 's|^\(#[^#].*\t\).*|\1sample|' >$QUERY
+        fi
+        if [[ "~{truthVcf}" =~ ".gz" ]] ; then
+            zcat ~{truthVcf} | sed 's|^\(#[^#].*\t\).*|\1sample|' >$TRUTH
+        else
+            cat ~{truthVcf} | sed 's|^\(#[^#].*\t\).*|\1sample|' >$TRUTH
+        fi
+
+
         # get stats
         whatshap stats \
             --tsv ${OUTPUT}.stats.tsv \
             --block-list ${OUTPUT}.blocks.txt \
             --chr-lengths /root/chr_lengths \
-            ~{queryVcf} \
+            $QUERY \
             >${OUTPUT}.stats.txt
 
         # get comparison
@@ -69,7 +83,7 @@ task whatshapAnalysis {
             --plot-blocksizes ${OUTPUT}.blocksizes.pdf \
             --plot-sum-of-blocksizes ${OUTPUT}.sum_of_blocksizes.pdf \
             --longest-block-tsv ${OUTPUT}.longest_block.tsv \
-            ~{queryVcf} ~{truthVcf} \
+            $QUERY $TRUTH \
             >$OUTPUT.compare.txt
 
         # tarball it
@@ -127,21 +141,10 @@ task coalesceResults {
             fi
         done
 
-        # zip output
-        echo "stats = list()" >>merge.py
-        echo "pairwise = list()" >>merge.py
-        echo "with open('~{outputIdentifier}.stats.tsv') as input:" >>merge.py
-        echo "  for line in input:" >>merge.py
-        echo "     stats.append(line.strip())" >>merge.py
-        echo "with open('~{outputIdentifier}.pairwise.tsv') as input:" >>merge.py
-        echo "  for line in input:" >>merge.py
-        echo "     pairwise.append(line.lstrip('#'))" >>merge.py
-        echo "for zipped in zip(stats, pairwise):" >>merge.py
-        echo "  print(zipped[0]+'\\t'+zipped[1])" >>merge.py
-        echo "" >>merge.py
-        python3 merge.py >~{outputIdentifier}.full.tsv
+        # merge into one consistent file
+        python3 /root/merge_results.py >~{outputIdentifier}.full.tsv
 
-
+        # tarball
         tar czvf ~{outputIdentifier}.wh_stats.tar.gz *.wh_stats ~{outputIdentifier}.stats.tsv ~{outputIdentifier}.pairwise.tsv ~{outputIdentifier}.full.tsv
     >>>
 
