@@ -444,7 +444,7 @@ def print_read_depth_summary(summary, output, verbose=False, genome_only=False):
                                                                       int(100.0 * log_depth_pairs[i][1] / total_depths)),
                       file=output)
 
-        if chrom != GENOME_KEY and summary[chrom][D_RANGE] is not None:
+        if chrom != GENOME_KEY and D_RANGE in summary[chrom] and summary[chrom][D_RANGE] is not None:
             print("\t\tdepths with spacing {}{}:".format(summary[chrom][D_SPACING],
                                                          "" if summary[chrom][D_RANGE] is None else
                                                          ", and range {}".format(summary[chrom][D_RANGE])), file=output)

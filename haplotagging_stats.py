@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 import argparse
-import glob
 import sys
 import os
-import matplotlib.pyplot as plt
 import pysam
 import collections
 import numpy as np
-import seaborn as sns
-import pandas as pd
 from multithread import *
 
 HP_TAG = "HP"
@@ -97,7 +93,7 @@ def get_position_classifications_and_lengths(bam_location, truth_h1_ids, truth_h
                 else:
                     classifier = INCORRECT
 
-            if classifier != UNCLASSIFIED:
+            if classifier == UNCLASSIFIED:
                 untagged_lengths.append(epos - spos)
             else:
                 tagged_lengths.append(epos - spos)
@@ -121,6 +117,10 @@ def get_position_classifications_and_lengths(bam_location, truth_h1_ids, truth_h
             if len_curr > len_total/2:
                 log("\tN50:    {}".format(l))
                 break
+        total_class = sum(tagged_lengths)
+        total_unclass = sum(untagged_lengths)
+        log("Total Read Length: {} ({} classified, {} unclassified)".format(total_class + total_unclass, total_class,
+                                                                            total_unclass))
 
     return position_classifications, tagged_lengths, untagged_lengths
 
@@ -234,7 +234,7 @@ def main(args = None):
     log("Finished position classification service over {} entries with {} failures".format(total, failure))
 
     output_base = args.output_filename
-    if output_base is None and args.output_filename_from_bam:
+    if output_base is None:
         output_base = os.path.basename(args.input).rstrip(".bam")
     haplotagging_filename="{}.haplotagging_stats.tsv".format(output_base)
     tagged_read_lengths_filename="{}.tagged_read_lengths.txt".format(output_base)
