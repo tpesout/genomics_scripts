@@ -58,6 +58,8 @@ def plot_two_stats(stats, key_x_fn, key_y_fn, label_x=None, label_y=None, figure
         # print("{}: {}".format(label_y, list(key_y_fn(file_stats))))
         plt.scatter(key_x_fn(file_stats), key_y_fn(file_stats), marker=marker, color=color, label=label, alpha=.3)
 
+    plt.xlim(0, max(map(key_x_fn, stats.values())) * 1.1)
+    plt.ylim(0, max(map(key_y_fn, stats.values())) * 1.1)
     if label_x is not None: plt.xlabel(label_x)
     if label_y is not None: plt.ylabel(label_y)
     plt.ticklabel_format(style='plain')

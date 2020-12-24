@@ -43,6 +43,9 @@ def parse_args(args = None):
                        help='Figure name should be based off of BAM file (-f overrides this)')
     parser.add_argument('--max_depth', '-d', dest='max_depth', default=72, required=False, type=int,
                        help='What depth should be used on y axes')
+    parser.add_argument('--only_natural_switch', '-N', dest='only_natural_switch', default=False, required=False, action='store_true',
+                       help='Only plot the natural switch')
+
 
     return parser.parse_args() if args is None else parser.parse_args(args)
 
@@ -57,6 +60,48 @@ def smooth_values(values,size=5,should_sum=False):
         e=min(len(values),i+size)
         new_values.append(sum(values[s:e]) if should_sum else np.mean(values[s:e]))
     return new_values
+
+
+def plotOnlyNaturalSwitch(classification_data, args, phasesets=None, figName=None):
+
+    start_idx = min(classification_data.keys())
+    end_idx = max(classification_data.keys())
+    x = []
+    right = []
+    rong = []
+    for i in range(start_idx, end_idx + 1):
+        x.append(i)
+        ri = classification_data[i][CORRECT]
+        ro = classification_data[i][INCORRECT]
+
+        right.append(ri)
+        rong.append(-1 * ro)
+
+    # get plots
+    fig, (ax1) = plt.subplots(nrows=1,ncols=1)
+    lw = .5
+
+    ax1.set_ylabel('Phasing Partitions')
+    ax1.fill_between(x, right, color='tab:red', linewidth=lw)
+    ax1.fill_between(x, rong, color='tab:blue', linewidth=lw)
+    ax1.set_ylim(-1 * args.max_depth, args.max_depth)
+
+    if phasesets is not None:
+        top = True
+        for ps in phasesets:
+            start = ps[0] // SPACING
+            end = ps[1] // SPACING
+            ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
+                     color='black', alpha=.65, linewidth=2)
+            top = not top
+
+    fig.tight_layout()
+    fig.set_size_inches(12, 3)
+    if figName is not None:
+        plt.savefig(figName)
+    plt.show()
+    plt.close()
+
 
 
 def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None,
@@ -237,24 +282,25 @@ def get_position_classifications(bam_location, truth_h1_ids, truth_h2_ids, regio
         samfile = pysam.AlignmentFile(bam_location, 'rb' if bam_location.endswith("bam") else 'r')
         for read in samfile.fetch(region=region):
             read_count += 1
-            if not read.has_tag(HP_TAG):
-                missing_hp_count += 1
-                continue
-
-            hp = read.get_tag(HP_TAG)
             id = read.query_name
             spos = read.reference_start
             epos = read.reference_end
-            if hp == 0:
+
+            if not read.has_tag(HP_TAG):
+                missing_hp_count += 1
                 classifier = UNCLASSIFIED
-            elif id not in truth_h1_ids and id not in truth_h2_ids:
-                classifier = UNKNOWN
-            elif hp == 1 and id in truth_h1_ids:
-                classifier = CORRECT
-            elif hp == 2 and id in truth_h2_ids:
-                classifier = CORRECT
             else:
-                classifier = INCORRECT
+                hp = read.get_tag(HP_TAG)
+                if hp == 0:
+                    classifier = UNCLASSIFIED
+                elif id not in truth_h1_ids and id not in truth_h2_ids:
+                    classifier = UNKNOWN
+                elif hp == 1 and id in truth_h1_ids:
+                    classifier = CORRECT
+                elif hp == 2 and id in truth_h2_ids:
+                    classifier = CORRECT
+                else:
+                    classifier = INCORRECT
 
             if classifier != UNCLASSIFIED:
                 analyzed_lengths.append(epos - spos)
@@ -263,6 +309,8 @@ def get_position_classifications(bam_location, truth_h1_ids, truth_h2_ids, regio
                 pos = int(spos / SPACING)
                 position_classifications[pos][classifier] += 1
                 spos += SPACING
+
+
     finally:
         if samfile is not None: samfile.close()
 
@@ -319,12 +367,15 @@ def main(args = None):
 
     figName = args.figure_name
     if figName is None and args.figure_name_bam:
-        figName = os.path.basename(args.margin_input_bam) + ".png"
+        figName = os.path.basename(args.margin_input_bam) + (".natural_switch" if args.only_natural_switch else "") + ".png"
 
     phasesets = None if args.phaseset_bed is None else read_phaseset_bed(args.phaseset_bed)
-    plottit(position_classifications, args=args, chunk_boundaries=chunk_boundaries, phasesets=phasesets, figName=figName,
-            has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None,
-            title=args.margin_input_bam if args.title is None and args.figure_name_bam else args.title)
+    if (args.only_natural_switch):
+        plotOnlyNaturalSwitch(position_classifications, args, phasesets, figName)
+    else:
+        plottit(position_classifications, args=args, chunk_boundaries=chunk_boundaries, phasesets=phasesets, figName=figName,
+                has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None,
+                title=args.margin_input_bam if args.title is None and args.figure_name_bam else args.title)
 
 
 
