@@ -12,6 +12,12 @@ import os
 import seaborn as sns
 import collections
 
+plt.style.use('ggplot')
+text_fontsize = 8
+plt.rcParams.update({'font.size': text_fontsize})
+plt.rcParams['pdf.fonttype'] = 42
+plt.switch_backend('agg')
+
 FILE_NAME = "file_name"
 BLOCK_N50 = "block_n50"
 ALL_SWITCH_RATE = "all_switch_rate"
@@ -26,7 +32,7 @@ def parse_args(args = None):
     parser = argparse.ArgumentParser("Plots information from haplotagging_stats tsv")
     parser.add_argument('--input', '-i', dest='input_stats_tsvs', default=None, required=True, type=str, action='append',
                         help='TSV file generated from "haplotagging_stats.py".  Can set multiple times, all values will be plotted')
-    parser.add_argument('--figure_name', '-f', dest='figure_name', default=None, required=False, type=str,
+    parser.add_argument('--figure_name', '-f', dest='figure_name', default=None, required=False, type=str, action='store',
                        help='Figure name (will save if set)')
     parser.add_argument('--figure_name_input', '-F', dest='figure_name_input', default=False, required=False, action='store_true',
                        help='Figure name should be based off of input file (-f overrides this)')
@@ -37,12 +43,18 @@ def parse_args(args = None):
 
     return parser.parse_args() if args is None else parser.parse_args(args)
 
+
 def get_color(filename):
-    if "margin" in filename.lower():
-        return "red"
+    Margin_COLOR = [(238 / 256.0, 39 / 256.0, 8 / 256.0, 0.7), (238 / 256.0, 39 / 256.0, 8 / 256.0, 0.8),
+                    (238 / 256.0, 39 / 256.0, 8 / 256.0, 1.0)]
+    WhatsHap_COLOR = [(10/256.0, 118/256.0, 148/256.0, 0.7), (10/256.0, 118/256.0, 148/256.0, 0.8), (10/256.0, 118/256.0, 148/256.0, 1.0)]
     if "whatshap" in filename.lower():
-        return "blue"
-    return "grey"
+        return WhatsHap_COLOR[0]
+    elif "margin" in filename.lower():
+        return Margin_COLOR[0]
+    else:
+        return "grey"
+
 
 def get_label(filename):
     if "margin" in filename.lower():
@@ -59,7 +71,7 @@ def get_classifications(classification_list):
     for classification_specification in classification_list:
         parts = classification_specification.split(":")
         assert(len(parts) == 2)
-        classification_name = parts[0]
+        classification_name = parts[0].replace("\\n", "\n")
         classification_bed = parts[1]
         classification_position_map[CLASSIFICATION_KEY].append(classification_name)
         with open(classification_bed) as cin:
@@ -180,9 +192,11 @@ def plot_violin_with_classifications(dataframes, args, classifications):
     columns = ["Stratification", "Accuracy", "Tool", "Classified Ratio"]
     total_depths = collections.defaultdict(lambda : 0)
 
-    plt.figure(figsize=[12,8])
+    plt.figure(figsize=(3.5, 3.5))
+    colors = {}
     for i, filename in enumerate(dataframes.keys()):
         dataframe = dataframes[filename]
+        colors[get_label(filename)] = get_color(filename)
         for x in dataframe.iterrows():
             if x[1][haplotagging_stats.TOTAL_DEPTH] == 0: continue
 
@@ -206,7 +220,7 @@ def plot_violin_with_classifications(dataframes, args, classifications):
     classifications[CLASSIFICATION_KEY].append("All")
     df = pandas.DataFrame(merged_dataframe, columns=columns)
     ax = sns.violinplot(x="Stratification", y="Classified Ratio" if args.plot_classified_not_accuracy else "Accuracy",
-                        hue="Tool", data=df, split=True, scale="count",
+                        hue="Tool", data=df, split=True, scale="count", palette=colors, linewidth=.75, bw=.1,
                         order=classifications[CLASSIFICATION_KEY], cut=0)
     # ax = sns.violinplot(x="Stratification", y="Classified Ratio" if args.plot_classified_not_accuracy else "Accuracy",
     #                     hue="Tool", data=df, split=True, scale="count", inner="quartile",
@@ -221,7 +235,7 @@ def plot_violin_with_classifications(dataframes, args, classifications):
         fig_name = ".".join(list(map(os.path.basename, args.input_stats_tsvs)))
         fig_name += ".png"
     if fig_name is not None:
-        plt.savefig(fig_name)
+        plt.savefig(fig_name + ".pdf", format='pdf', dpi=300 )
     plt.show()
 
 

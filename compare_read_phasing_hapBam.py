@@ -9,6 +9,14 @@ import collections
 import numpy as np
 import os
 
+plt.style.use('ggplot')
+text_fontsize = 8
+# plt.rcParams['ytick.labelsize']=text_fontsize+4
+plt.rcParams.update({'font.size': text_fontsize})
+plt.rcParams['pdf.fonttype'] = 42
+plt.switch_backend('agg')
+
+
 HP_TAG = "HP"
 UNCLASSIFIED = 'u'
 CORRECT = 'c'
@@ -17,7 +25,7 @@ UNKNOWN = 'k'
 HETS = 'h'
 FP = 'p'
 FN = 'n'
-SPACING = 1000
+SPACING = 10000
 
 def parse_args(args = None):
     parser = argparse.ArgumentParser("Compares phasing for reads haplotyped by margin")
@@ -70,18 +78,20 @@ def plotOnlyNaturalSwitch(classification_data, args, phasesets=None, figName=Non
     right = []
     rong = []
     for i in range(start_idx, end_idx + 1):
-        x.append(i)
+        x.append(i / (1000000 / SPACING))
         ri = classification_data[i][CORRECT]
         ro = classification_data[i][INCORRECT]
 
-        right.append(ri)
-        rong.append(-1 * ro)
+        right.append(min(args.max_depth, ri))
+        rong.append(-1 * min(args.max_depth, ro))
 
     # get plots
-    fig, (ax1) = plt.subplots(nrows=1,ncols=1)
+    # fig, (ax1) = plt.subplots(nrows=1,ncols=1)
+    fig, (ax1) = plt.subplots(nrows=1,ncols=1, figsize=(8, 1.75))
     lw = .5
 
-    ax1.set_ylabel('Phasing Partitions')
+    ax1.set_ylabel('Concordant/Discordant\nDepth')
+    ax1.set_xlabel('Chr1 Positions (Mb)')
     ax1.fill_between(x, right, color='tab:red', linewidth=lw)
     ax1.fill_between(x, rong, color='tab:blue', linewidth=lw)
     ax1.set_ylim(-1 * args.max_depth, args.max_depth)
@@ -89,16 +99,19 @@ def plotOnlyNaturalSwitch(classification_data, args, phasesets=None, figName=Non
     if phasesets is not None:
         top = True
         for ps in phasesets:
-            start = ps[0] // SPACING
-            end = ps[1] // SPACING
+            start = ps[0] // 1000000
+            end = ps[1] // 1000000
+            # start = ps[0] // SPACING
+            # end = ps[1] // SPACING
             ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
-                     color='black', alpha=.65, linewidth=2)
+                     color='black', alpha=1, linewidth=1.5)
             top = not top
 
     fig.tight_layout()
-    fig.set_size_inches(12, 3)
+    # fig.set_size_inches(12, 3)
     if figName is not None:
-        plt.savefig(figName)
+        plt.savefig(figName+".svg", format='svg', dpi=50)
+        plt.savefig(figName+".pdf", format='pdf', dpi=300)
     plt.show()
     plt.close()
 
