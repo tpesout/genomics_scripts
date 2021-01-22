@@ -78,7 +78,7 @@ def plotOnlyNaturalSwitch(classification_data, args, phasesets=None, figName=Non
     right = []
     rong = []
     for i in range(start_idx, end_idx + 1):
-        x.append(i / (1000000 / SPACING))
+        x.append(i / (1000000.0 / SPACING))
         ri = classification_data[i][CORRECT]
         ro = classification_data[i][INCORRECT]
 
@@ -99,12 +99,15 @@ def plotOnlyNaturalSwitch(classification_data, args, phasesets=None, figName=Non
     if phasesets is not None:
         top = True
         for ps in phasesets:
-            start = ps[0] // 1000000
-            end = ps[1] // 1000000
+            modifier = 1000000.0
+            start = ps[0] / modifier
+            end = ps[1] / modifier
+            # ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
+            #          color='black', alpha=.65, linewidth=2)
             # start = ps[0] // SPACING
             # end = ps[1] // SPACING
-            ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
-                     color='black', alpha=1, linewidth=1.5)
+            ps_range = list(map(lambda x: x/modifier, range(int(start*modifier), int(end*modifier), 10000)))
+            ax1.plot(ps_range, [2 if top else -2 for _ in ps_range], color='black', alpha=1, linewidth=.75)
             top = not top
 
     fig.tight_layout()
@@ -153,8 +156,8 @@ def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf
         fn.append(classification_data[i][FN])
 
     # get averages
-    avg_unknown = np.mean(list(map(lambda y: y[1], filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, unknown)))))
-    avg_classified = np.mean(list(map(lambda y: y[1], filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, total_classified)))))
+    avg_unknown = np.mean(list(map(lambda y: y[1], filter(lambda x: x[0] != 0, zip(total_reads, unknown)))))
+    avg_classified = np.mean(list(map(lambda y: y[1], filter(lambda x: x[0] != 0, zip(total_reads, total_classified)))))
     avg_total_reads = np.mean(list(filter(lambda x: x != 0, total_reads)))
     avg_correct = np.mean(list(filter(lambda x: x is not None, correct_ratio)))
     std_correct = np.std(list(filter(lambda x: x is not None, correct_ratio)))
