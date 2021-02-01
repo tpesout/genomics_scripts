@@ -9,6 +9,15 @@ import collections
 import numpy as np
 import os
 
+
+plt.style.use('ggplot')
+text_fontsize = 5
+# plt.rcParams['ytick.labelsize']=text_fontsize+4
+plt.rcParams.update({'font.size': text_fontsize})
+plt.rcParams['pdf.fonttype'] = 42
+plt.switch_backend('agg')
+
+
 GENE_GTF_CHROM_IDX=0
 GENE_GTF_TYPE_IDX=2
 GENE_GTF_START_POS_IDX=3
@@ -100,6 +109,8 @@ def parse_args(args = None):
                        help='Annotated truth from hap.py')
     parser.add_argument('--repair_chr_names', '-C', dest='repair_chr_names', default=False, required=False, action='store_true',
                        help='Add "chr" to contig names without (there are sometimes "1" and "chr1" mismatches for grch37)')
+    parser.add_argument('--only_protien_coding', '-p', dest='only_protien_coding', default=False, required=False, action='store_true',
+                       help='Only run for genes with type "protein_coding"')
     parser.add_argument('--output_base', '-o', dest='output_base', default=None, required=False, type=str,
                        help='Output base file name')
     parser.add_argument('--output_base_from_input', '-O', dest='output_base_from_input', default=False, required=False, action='store_true',
@@ -145,6 +156,8 @@ def get_bed_regions(args):
             end_pos = int(parts[GENE_GTF_END_POS_IDX])
             info = parts[GENE_GTF_INFO_IDX]
             gene = GeneInfo(chrom, start_pos, end_pos, info)
+            if args.only_protien_coding and gene.info["gene_type"] != 'protein_coding':
+                continue
             # save it
             genes[chrom].append(gene)
     log("Found {} genes in {}".format(sum(map(len, genes.values())), args.gene_gtf))
@@ -429,7 +442,7 @@ def get_coverage_state(wholly, partially, nott, chrom, gene):
     return None
 
 
-def plot_coverage_donut(coverage_breakdown, output_base):
+def plot_coverage_donut(coverage_breakdown, output_base, figsize=(3.5, 3.5)):
 
     # data we plot
     wholeH = 0
@@ -551,7 +564,7 @@ def plot_coverage_donut(coverage_breakdown, output_base):
 
 
     # First Ring (outside)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(nrows=1,ncols=1,figsize=figsize)
     ax.axis('equal')
     mypie, _ = ax.pie(group_size, radius=1.3, labels=group_names, colors=group_colors)
     plt.setp(mypie, width=0.3, edgecolor='white')
@@ -571,11 +584,11 @@ def plot_coverage_donut(coverage_breakdown, output_base):
 
     # show it
     if output_base is not None:
-        plt.savefig("{}.coverage_donut.png".format(output_base))
+        plt.savefig("{}.coverage_donut.pdf".format(output_base), format='pdf', dpi=300)
     plt.show()
 
 
-def plot_coverage_grouped_bar(coverage_breakdown, output_base):
+def plot_coverage_grouped_bar(coverage_breakdown, output_base, figsize=(3.5, 3.5)):
 
     # data we plot
     wholeH = 0
@@ -666,7 +679,7 @@ def plot_coverage_grouped_bar(coverage_breakdown, output_base):
     bars2 = [wholeH_wholeP, partH_wholeP, notH_wholeP]
     bars3 = [wholeH_wholeP_notS, partH_wholeP_notS, 0]
 
-    a, b, c = [plt.cm.Blues, plt.cm.Greens, plt.cm.Reds]
+    a, b, c = [plt.cm.Purples, plt.cm.Blues, plt.cm.Greens]
 
     # Set position of bar on X axis
     r1 = np.arange(len(bars1))
@@ -674,10 +687,10 @@ def plot_coverage_grouped_bar(coverage_breakdown, output_base):
     r3 = [x + barWidth for x in r2]
 
     # Make the plot
-    fig, (ax1) = plt.subplots(nrows=1,ncols=1)
+    fig, (ax1) = plt.subplots(nrows=1,ncols=1,figsize=figsize)
     rect1 = ax1.bar(r1, bars1, color=[a(0.6), b(0.6), c(0.6)], hatch='', width=barWidth, edgecolor='white', label='Total Genes')
-    rect2 = ax1.bar(r2, bars2, color=[a(0.45), b(0.45), c(0.45)], hatch='-',  width=barWidth, edgecolor='white', label='Wholly Phased')
-    rect3 = ax1.bar(r3, bars3, color=[a(0.3), b(0.3), c(0.3)], hatch='x', width=barWidth, edgecolor='white', label='No Switch Errors')
+    rect2 = ax1.bar(r2, bars2, color=[a(0.45), b(0.45), c(0.45)], hatch='',  width=barWidth, edgecolor='white', label='Wholly Phased')
+    rect3 = ax1.bar(r3, bars3, color=[a(0.3), b(0.3), c(0.3)], hatch='', width=barWidth, edgecolor='white', label='No Switch Errors')
 
     # Add xticks on the middle of the group bars
     # plt.xlabel('', fontweight='bold')
@@ -689,7 +702,7 @@ def plot_coverage_grouped_bar(coverage_breakdown, output_base):
             height = rect.get_height()
             if height == 0: continue
             ax1.annotate('{} ({:4.1f}%)'.format(height, 100.0*height/max(1,percentage_denominator[i])),
-                        xy=(rect.get_x() + rect.get_width() / 2, height - .35 * max(bars1)),
+                        xy=(rect.get_x() + rect.get_width() / 2, height - .25 * max(bars1)),
                         xytext=(0, 3),  # 3 points vertical offset
                         textcoords="offset points", rotation=90,
                         ha='center', va='bottom')#, weight='bold')
@@ -700,21 +713,26 @@ def plot_coverage_grouped_bar(coverage_breakdown, output_base):
 
     # Create legend & Show graphic
     plt.legend()
+    plt.tight_layout()
+    ax1.set_ylabel("Gene Count")
+    ax1.set_xlabel("Coverage Classification")
 
     # show it
     if output_base is not None:
-        plt.savefig("{}.coverage_grouped_bar.png".format(output_base))
+        plt.savefig("{}.coverage_grouped_bar.pdf".format(output_base), format='pdf', dpi=300)
     plt.show()
 
 
 
-def plot_coverage_grouped_bar_manual_for_files(output_base):
+def plot_coverage_grouped_bar_manual_for_files(output_base, figsize=(3.5, 3.5)):
 
     # data we plot
-    total_genes = 60656
-    samples = ["Total Genes\n(GRCh38)", "HG003", "HG004"]
-    coverage = [60656, 53817, 55234]
-
+    total_genes_38 = 60656
+    total_genes_37 = 62438
+    
+    samples = ["Total\nGenes\nGRCh38", "HG003\nWholly\nPhased\n(GRCh38)", "HG004\nWholly\nPhased\n(GRCh38)", "Total\nGenes\nGRCh37", "HG001\nWholly\nPhased\n(GRCh37)", "HG005\nWholly\nPhased\n(GRCh37)", "HG006\nWholly\nPhased\n(GRCh37)", "HG007\nWholly\nPhased\n(GRCh37)"]
+    samples = ["Total\nGenes\nGRCh38", "HG003\n(GRCh38)", "HG004\n(GRCh38)", "Total\nGenes\nGRCh37", "HG001\n(GRCh37)", "HG005\n(GRCh37)", "HG006\n(GRCh37)", "HG007\n(GRCh37)"]
+    coverage = [60656, 53817, 55234, 62438, 57175, 53150, 53112, 54116]
 
     def autolabel(rects, percentage_denominator):
         """Attach a text label above each bar in *rects*, displaying its height."""
@@ -722,25 +740,29 @@ def plot_coverage_grouped_bar_manual_for_files(output_base):
             height = rect.get_height()
             if height == 0: continue
             ax1.annotate('{} ({:4.1f}%)'.format(height, 100.0*height/max(1,percentage_denominator[i])),
-                        xy=(rect.get_x() + rect.get_width() / 2, height - .35 * total_genes),
+                        xy=(rect.get_x() + rect.get_width() / 2, height - .25 * max(coverage)),
                         xytext=(0, 3),  # 3 points vertical offset
                         textcoords="offset points", rotation=90,
                         ha='center', va='bottom')#, weight='bold')
 
     # Make the plot
-    fig, (ax1) = plt.subplots(nrows=1,ncols=1)
+    fig, (ax1) = plt.subplots(nrows=1,ncols=1,figsize=figsize)
     for i in range(len(samples)):
-        rect = ax1.bar([i], [coverage[i]], color=plt.cm.Reds(0.6), hatch='' if i == 0 else '-', edgecolor='white')
-        autolabel(rect, [total_genes])
+        rect = ax1.bar([i], [coverage[i]], color=(plt.cm.Oranges if i < 3 else plt.cm.Reds)(0.6 if i in (0, 3) else .45), hatch='' if i == 0 else '', edgecolor='white')
+        autolabel(rect, [total_genes_38 if i < 3 else total_genes_37])
 
     # Add xticks on the middle of the group bars
     # plt.xlabel('', fontweight='bold')
     plt.xticks([r for r in range(len(samples))], samples)
+    ax1.set_ylabel("Gene Count")
+    ax1.set_xlabel("Reference / Sample")
 
     # show it
+    plt.tight_layout()
     if output_base is not None:
-        plt.savefig("{}.coverage_grouped_bar_manual.png".format(output_base))
+        plt.savefig("{}.coverage_grouped_bar_manual.pdf".format(output_base), format='pdf', dpi=300)
     plt.show()
+
 
 def main():
     args = parse_args()
@@ -757,8 +779,8 @@ def main():
         output_base = os.path.basename(args.phased_vcf).rstrip(".gz").rstrip(".vcf")
 
     # one-off plot for the paper
-    # plot_coverage_grouped_bar_manual_for_files(output_base)
-    # sys.exit()
+    plot_coverage_grouped_bar_manual_for_files(output_base)
+    sys.exit()
 
     # get data
     phasesets = get_phasesets_from_vcf(args.phased_vcf, args)
@@ -857,7 +879,7 @@ def main():
                 log("\t{:26s} {:26s} {:26s} {:5d}  {:6s}  {:5.1f}%".format("", "", "       TOTAL", phsd_total, "", 100.0 * phsd_total / total_genes))
         if hicf_total != 0:
             log("\t{:26s} {:26s} {:26s} {:5d}  {:6s}  {:5.1f}%".format("", "       TOTAL", "", hicf_total, "", 100.0 * hicf_total / total_genes))
-    plot_coverage_donut(coverage_breakdown, output_base)
+    # plot_coverage_donut(coverage_breakdown, output_base)
     plot_coverage_grouped_bar(coverage_breakdown, output_base)
 
 
@@ -872,10 +894,10 @@ def main():
     log("Wholly Covered HiConf Gene Variant Stats:")
     log("\tSNP Precision:   {:.5f} {:8}/{}+{}".format(snp_tp/max(1, snp_tp+snp_fp), snp_tp, snp_tp, snp_fp))
     log("\tSNP Recall:      {:.5f} {:8}/{}+{}".format(snp_tp/max(1, snp_tp+snp_fn), snp_tp, snp_tp, snp_fn))
+    log("\tSNP F1:          {:.5f} {:8}/({}+({}+{})/2)".format(snp_tp/max(1, snp_tp+(snp_fn+snp_fp)/2), snp_tp, snp_tp, snp_fn,snp_fp))
     log("\tINDEL Precision: {:.5f} {:8}/{}+{}".format(indel_tp/max(1, indel_tp+indel_fp), indel_tp, indel_tp, indel_fp))
     log("\tINDEL Recall:    {:.5f} {:8}/{}+{}".format(indel_tp/max(1, indel_tp+indel_fn), indel_tp, indel_tp, indel_fn))
-    log("\tALL Precision:   {:.5f} {:8}/{}+{}".format((snp_tp+indel_tp)/max(1, indel_tp+indel_fp+snp_tp+snp_fp), snp_tp+indel_tp, indel_tp+snp_tp, indel_fp+snp_fp))
-    log("\tALL Recall:      {:.5f} {:8}/{}+{}".format((snp_tp+indel_tp)/max(1, indel_tp+indel_fn+snp_tp+snp_fn), snp_tp+indel_tp, indel_tp+snp_tp, indel_fn+snp_fn))
+    log("\tINDEL F1:        {:.5f} {:8}/({}+({}+{})/2)".format(indel_tp/max(1, indel_tp+(indel_fn+indel_fp)/2), indel_tp, indel_tp, indel_fn,indel_fp))
 
 
     pass
