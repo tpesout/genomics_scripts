@@ -69,8 +69,8 @@ def is_gene_line(gene_data):
     return gene_data[GENE_GTF_TYPE_IDX] == TYPE_GENE
 
 
-def get_gene_filename(gene_info, type):
-    return "genes/{}--{}--{}.bed".format(gene_info[INFO_GENE_NAME], gene_info[INFO_GENE_ID], type)
+# def get_gene_filename(gene_info, type):
+#     return "genes/{}--{}--{}.bed".format(gene_info[INFO_GENE_NAME], gene_info[INFO_GENE_ID], type)
 
 
 def get_stratification_entry(filename):
@@ -109,11 +109,11 @@ def main():
     if output_dir is None:
         log("Need output directory configuration")
         sys.exit(1)
-    output_genes_dir = os.path.join(output_dir, "genes")
     output_genome_dir = os.path.join(output_dir, "genome")
     make_dir(output_dir)
-    make_dir(output_genes_dir)
     make_dir(output_genome_dir)
+    # output_genes_dir = os.path.join(output_dir, "genes")
+    # make_dir(output_genes_dir)
 
     # prep for writing
     stratification_filename = os.path.join(output_dir, "{}.stratification.tsv".format(output_base))
@@ -171,35 +171,35 @@ def main():
                 if args.protein_coding_only and self.gene_info[INFO_GENE_TYPE] != TYPE__PROTEIN_OCDING:
                     return 0, 0, 0
                 # genes
-                gene_filename = get_gene_filename(self.gene_info, "gene")
-                with open(os.path.join(output_dir, gene_filename), 'w') as fout:
-                    fout.write("# contains a gene record from {}\n".format(args.gencode_gtf))
-                    fout.write(self.gene_bed_record)
+                # gene_filename = get_gene_filename(self.gene_info, "gene")
+                # with open(os.path.join(output_dir, gene_filename), 'w') as fout:
+                #     fout.write("# contains a gene record from {}\n".format(args.gencode_gtf))
+                #     fout.write(self.gene_bed_record)
                 all_gene_file.write(self.gene_bed_record)
-                stratification_file.write(get_stratification_entry(gene_filename))
+                # stratification_file.write(get_stratification_entry(gene_filename))
                 gene_strats_written = 1
                 gene_records_written = 1
                 # exons
                 if len(self.exon_entries) > 0:
-                    exon_filename = get_gene_filename(self.gene_info, "exon")
-                    with open(os.path.join(output_dir, exon_filename), 'w') as fout:
-                        fout.write("# contains exon records from {}\n".format(args.gencode_gtf))
-                        for exon_record in self.exon_entries:
-                            fout.write(exon_record)
-                            all_exon_file.write(exon_record)
-                            gene_records_written += 1
-                    stratification_file.write(get_stratification_entry(exon_filename))
+                    # exon_filename = get_gene_filename(self.gene_info, "exon")
+                    # with open(os.path.join(output_dir, exon_filename), 'w') as fout:
+                    #     fout.write("# contains exon records from {}\n".format(args.gencode_gtf))
+                    for exon_record in self.exon_entries:
+                        # fout.write(exon_record)
+                        all_exon_file.write(exon_record)
+                        gene_records_written += 1
+                    # stratification_file.write(get_stratification_entry(exon_filename))
                     gene_strats_written += 1
                 # cds
                 if len(self.cds_entries) > 0:
-                    cds_filename = get_gene_filename(self.gene_info, "cds")
-                    with open(os.path.join(output_dir, cds_filename), 'w') as fout:
-                        fout.write("# contains CDS records from {}\n".format(args.gencode_gtf))
-                        for cds_record in self.exon_entries:
-                            fout.write(cds_record)
-                            all_cds_file.write(cds_record)
-                            gene_records_written += 1
-                    stratification_file.write(get_stratification_entry(cds_filename))
+                    # cds_filename = get_gene_filename(self.gene_info, "cds")
+                    # with open(os.path.join(output_dir, cds_filename), 'w') as fout:
+                    #     fout.write("# contains CDS records from {}\n".format(args.gencode_gtf))
+                    for cds_record in self.cds_entries:
+                        # fout.write(cds_record)
+                        all_cds_file.write(cds_record)
+                        gene_records_written += 1
+                    # stratification_file.write(get_stratification_entry(cds_filename))
                     gene_strats_written += 1
                 return 1, gene_strats_written, gene_records_written
 
@@ -240,12 +240,6 @@ def main():
 
     log("From {} gencode entries wrote {} genes, {} stratifications, and {} entries".format(
         total_gencode_records, total_genes_written, total_stratifications, total_entries_written))
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
