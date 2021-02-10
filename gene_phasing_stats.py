@@ -126,8 +126,6 @@ def parse_args(args = None):
                        help='Output base file name')
     parser.add_argument('--output_base_from_input', '-O', dest='output_base_from_input', default=False, required=False, action='store_true',
                        help='Output file name will be determined from --phased_vcf parameter')
-    parser.add_argument('--only_protien_coding', '-p', dest='only_protien_coding', default=False, required=False, action='store_true',
-                       help='Only run for genes with type "protein_coding"')
     return parser.parse_args() if args is None else parser.parse_args(args)
 
 
@@ -939,15 +937,16 @@ def plot_coverage_grouped_bar(coverage_breakdown, output_base, figsize=(3.5, 3.5
     plt.show()
 
 
-
 def plot_coverage_grouped_bar_manual_for_files(output_base, figsize=(3.5, 3.5)):
-
     # data we plot
     total_genes_38 = 60656
     total_genes_37 = 62438
-    
-    samples = ["Total\nGenes\nGRCh38", "HG003\nWholly\nPhased\n(GRCh38)", "HG004\nWholly\nPhased\n(GRCh38)", "Total\nGenes\nGRCh37", "HG001\nWholly\nPhased\n(GRCh37)", "HG005\nWholly\nPhased\n(GRCh37)", "HG006\nWholly\nPhased\n(GRCh37)", "HG007\nWholly\nPhased\n(GRCh37)"]
-    samples = ["Total\nGenes\nGRCh38", "HG003\n(GRCh38)", "HG004\n(GRCh38)", "Total\nGenes\nGRCh37", "HG001\n(GRCh37)", "HG005\n(GRCh37)", "HG006\n(GRCh37)", "HG007\n(GRCh37)"]
+
+    samples = ["Total\nGenes\nGRCh38", "HG003\nWholly\nPhased\n(GRCh38)", "HG004\nWholly\nPhased\n(GRCh38)",
+               "Total\nGenes\nGRCh37", "HG001\nWholly\nPhased\n(GRCh37)", "HG005\nWholly\nPhased\n(GRCh37)",
+               "HG006\nWholly\nPhased\n(GRCh37)", "HG007\nWholly\nPhased\n(GRCh37)"]
+    samples = ["Total\nGenes\nGRCh38", "HG003\n(GRCh38)", "HG004\n(GRCh38)", "Total\nGenes\nGRCh37", "HG001\n(GRCh37)",
+               "HG005\n(GRCh37)", "HG006\n(GRCh37)", "HG007\n(GRCh37)"]
     coverage = [60656, 53817, 55234, 62438, 57175, 53150, 53112, 54116]
 
     def autolabel(rects, percentage_denominator):
@@ -955,16 +954,18 @@ def plot_coverage_grouped_bar_manual_for_files(output_base, figsize=(3.5, 3.5)):
         for i, rect in enumerate(rects):
             height = rect.get_height()
             if height == 0: continue
-            ax1.annotate('{} ({:4.1f}%)'.format(height, 100.0*height/max(1,percentage_denominator[i])),
-                        xy=(rect.get_x() + rect.get_width() / 2, height - .25 * max(coverage)),
-                        xytext=(0, 3),  # 3 points vertical offset
-                        textcoords="offset points", rotation=90,
-                        ha='center', va='bottom')#, weight='bold')
+            ax1.annotate('{} ({:4.1f}%)'.format(height, 100.0 * height / max(1, percentage_denominator[i])),
+                         xy=(rect.get_x() + rect.get_width() / 2, height - .25 * max(coverage)),
+                         xytext=(0, 3),  # 3 points vertical offset
+                         textcoords="offset points", rotation=90,
+                         ha='center', va='bottom')  # , weight='bold')
 
     # Make the plot
-    fig, (ax1) = plt.subplots(nrows=1,ncols=1,figsize=figsize)
+    fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=figsize)
     for i in range(len(samples)):
-        rect = ax1.bar([i], [coverage[i]], color=(plt.cm.Oranges if i < 3 else plt.cm.Reds)(0.6 if i in (0, 3) else .45), hatch='' if i == 0 else '', edgecolor='white')
+        rect = ax1.bar([i], [coverage[i]],
+                       color=(plt.cm.Oranges if i < 3 else plt.cm.Reds)(0.6 if i in (0, 3) else .45),
+                       hatch='' if i == 0 else '', edgecolor='white')
         autolabel(rect, [total_genes_38 if i < 3 else total_genes_37])
 
     # Add xticks on the middle of the group bars
@@ -977,6 +978,129 @@ def plot_coverage_grouped_bar_manual_for_files(output_base, figsize=(3.5, 3.5)):
     plt.tight_layout()
     if output_base is not None:
         plt.savefig("{}.coverage_grouped_bar_manual.pdf".format(output_base), format='pdf', dpi=300)
+    plt.show()
+
+
+def plot_accuracy_grouped_bar_manual_for_files(output_base, plot_snp, figsize=(3.5, 3.5)):
+
+    # data we plot
+    GENOME = "Genome"
+    ALL_GENES = "All Genes"
+    PC_GENES = "Protein\nCoding\nGenes"
+    PC_SEQUENCE = "Protein\nCoding\nSequence\n(CDS)"
+    PC_FRAMESHIFT = "CDS\nFrameshift"
+    CCS = "PacBio-HiFi"
+    ONT = "Nanopore"
+    data_snp = {
+        GENOME: {
+            ONT : [0.996314, 0.998169],
+            CCS : [0.998062, 0.999391]},
+        ALL_GENES: {
+            ONT : [0.996481, 0.998097],
+            CCS : [0.998197, 0.999384]},
+        PC_GENES: {
+            ONT : [0.996751, 0.99799],
+            CCS : [0.998441, 0.999382]},
+        PC_SEQUENCE: {
+            ONT : [0.997887, 0.998641],
+            CCS : [0.998994, 0.999446]},
+    }
+    data_indel = {
+        GENOME: {
+            ONT : [0.878512, 0.60077],
+            CCS : [0.92602, 0.948736]},
+        ALL_GENES: {
+            ONT : [0.877943, 0.595042],
+            CCS : [0.922887, 0.947847]},
+        PC_GENES: {
+            ONT : [0.876731, 0.584914],
+            CCS : [0.918991, 0.946128]},
+        PC_SEQUENCE: {
+            ONT : [0.926893, 0.799544],
+            CCS : [0.909278, 0.984055]},
+        PC_FRAMESHIFT: {
+            ONT : [0.85161, 0.80488],
+            CCS : [0.82292, 0.98137]},
+    }
+
+
+    # set width of bar
+    barWidth = 0.15
+
+    # set height of bar
+    # bars1 = [wholeH, wholeH_wholeP, wholeH_wholeP_notS]
+    # bars2 = [partH, partH_wholeP, partH_wholeP_notS]
+    # bars3 = [notH, notH_wholeP, 0]
+    data = data_snp if plot_snp else data_indel
+    bar_ordering = [GENOME, ALL_GENES, PC_GENES, PC_SEQUENCE] #+ ([] if plot_snp else [PC_FRAMESHIFT])
+    bar_ont_precision = [data[x][ONT][0] for x in bar_ordering]
+    bar_ont_recall = [data[x][ONT][1] for x in bar_ordering]
+    bar_ont_f1 = [2 * data[x][ONT][0] * data[x][ONT][1] / (data[x][ONT][0] + data[x][ONT][1]) for x in bar_ordering]
+    bar_ccs_precision = [data[x][CCS][0] for x in bar_ordering]
+    bar_ccs_recall = [data[x][CCS][1] for x in bar_ordering]
+    bar_ccs_f1 = [2 * data[x][CCS][0] * data[x][CCS][1] / (data[x][CCS][0] + data[x][CCS][1]) for x in bar_ordering]
+
+    C_ONT = plt.cm.Reds if plot_snp else plt.cm.Oranges
+    C_CCS = plt.cm.Blues if plot_snp else plt.cm.Purples
+    S_P = .6
+    S_R = .45
+    S_F = .3
+
+    # Set position of bar on X axis
+    r_ont_precision = np.arange(len(bar_ordering))
+    r_ont_recall = [x + barWidth for x in r_ont_precision]
+    r_ont_f1 = [x + barWidth for x in r_ont_recall]
+    r_ccs_precision = [x + barWidth for x in r_ont_f1]
+    r_ccs_recall = [x + barWidth for x in r_ccs_precision]
+    r_ccs_f1 = [x + barWidth for x in r_ccs_recall]
+
+    # Make the plot
+    fig, (ax1) = plt.subplots(nrows=1,ncols=1,figsize=figsize)
+    rect_op = ax1.bar(r_ont_precision, bar_ont_precision, color=C_ONT(S_P), hatch='', width=barWidth, edgecolor='white', label=ONT+' Precision')
+    rect_or = ax1.bar(r_ont_recall, bar_ont_recall, color=C_ONT(S_R), hatch='',  width=barWidth, edgecolor='white', label=ONT+' Recall')
+    rect_of = ax1.bar(r_ont_f1, bar_ont_f1, color=C_ONT(S_F), hatch='', width=barWidth, edgecolor='white', label=ONT+' F1-Score')
+    rect_cp = ax1.bar(r_ccs_precision, bar_ccs_precision, color=C_CCS(S_P), hatch='', width=barWidth, edgecolor='white', label=CCS + ' Precision')
+    rect_cr = ax1.bar(r_ccs_recall, bar_ccs_recall, color=C_CCS(S_R), hatch='',  width=barWidth, edgecolor='white', label=CCS + ' Recall')
+    rect_cf = ax1.bar(r_ccs_f1, bar_ccs_f1, color=C_CCS(S_F), hatch='', width=barWidth, edgecolor='white', label=CCS + ' F1-Score')
+
+    # Add xticks on the middle of the group bars
+    # plt.xlabel('', fontweight='bold')
+    plt.xticks([r + 2.5*barWidth for r in range(len(bar_ordering))], bar_ordering)
+    ylim_min = .99 if plot_snp else .0
+    ylim_max = 1.0
+
+    def autolabel(rects, msg):
+        """Attach a text label above each bar in *rects*, displaying its height."""
+        for i, rect in enumerate(rects):
+            height = rect.get_height()
+            if height == 0: continue
+            ax1.annotate('{:5.4f}'.format(height),
+                        xy=(rect.get_x() + rect.get_width() / 2, height - .125 * (ylim_max - ylim_min)),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points", rotation=90, color="black",
+                        ha='center', va='bottom')#, weight='bold')
+            ax1.annotate('{}'.format(msg),
+                        xy=(rect.get_x() + rect.get_width() / 2, ylim_min + .025 * (ylim_max - ylim_min)),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points", rotation=90, color="black",
+                        ha='center', va='bottom')#, weight='bold')
+    autolabel(rect_op, ONT + " Precision")
+    autolabel(rect_or, ONT + " Recall")
+    autolabel(rect_of, ONT + " F1-Score")
+    autolabel(rect_cp, CCS + " Precision")
+    autolabel(rect_cr, CCS + " Recall")
+    autolabel(rect_cf, CCS + " F1-Score")
+
+    # Create legend & Show graphic
+    # plt.legend()
+    # plt.tight_layout()
+    ax1.set_ylabel("Accuracy")
+    ax1.set_xlabel("Gene Stratification")
+    ax1.set_ylim(ylim_min, ylim_max)
+
+    # show it
+    if output_base is not None:
+        plt.savefig("{}.gene_accuracies_{}.pdf".format(output_base, "snp" if plot_snp else "indel"), format='pdf', dpi=300)
     plt.show()
 
 
@@ -995,7 +1119,9 @@ def main():
         output_base = os.path.basename(args.phased_vcf).rstrip(".gz").rstrip(".vcf")
 
     # one-off plot for the paper
-    plot_coverage_grouped_bar_manual_for_files(output_base)
+    plot_accuracy_grouped_bar_manual_for_files(output_base, True)
+    plot_accuracy_grouped_bar_manual_for_files(output_base, False)
+    # plot_coverage_grouped_bar_manual_for_files(output_base)
     sys.exit()
 
     # get data
@@ -1103,7 +1229,7 @@ def main():
         if hicf_total != 0:
             log("\t{:26s} {:26s} {:26s} {:5d}  {:6s}  {:5.1f}%".format("", "       TOTAL", "", hicf_total, "", 100.0 * hicf_total / total_genes))
     # plot_coverage_donut(coverage_breakdown, output_base)
-    # plot_coverage_grouped_bar(coverage_breakdown, output_base)
+    plot_coverage_grouped_bar(coverage_breakdown, output_base)
 
     snp_tp = highconf_variants[SNP][TP]
     snp_fp = highconf_variants[SNP][FP]
