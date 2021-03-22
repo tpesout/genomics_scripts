@@ -37,9 +37,13 @@ TYPE_PHASESET="p"
 TYPE_EXON="x"
 TYPE_CODING="c"
 
-WHOLLY="wholly_covered"
-PARTIALLY="partially_covered"
-NOT_COVERED="not_covered"
+WHOLLY="wholly"
+PARTIALLY="partially"
+NOT_COVERED="not"
+
+ERROR="error"
+NO_ERROR="no error"
+
 
 SNP="snp"
 INDEL="indel"
@@ -100,10 +104,14 @@ class GeneInfo(BedRecord):
     def get_total_variants(self):
         return sum([self.snp_tp, self.snp_fp, self.snp_fn, self.indel_tp, self.indel_fp, self.indel_fn])
 
-    def get_gene_name(self):
+    def get_gene_custom_identifier(self):
         if "gene_name" in self.info:
             return "{} ({}:{}-{})".format(self.info["gene_name"], self.chrom, self.start, self.end)
         return "{}:{}-{}".format(self.chrom, self.start, self.end)
+
+    def get_gene_id(self):
+        return self.info["gene_id"] if "gene_id" in self.info else None
+
 
 
 def parse_args(args = None):
@@ -118,8 +126,14 @@ def parse_args(args = None):
                        help='high confidence bed from annotated truth')
     parser.add_argument('--truth_annotated_vcf', '-a', dest='truth_annotated_vcf', default=None, required=False, type=str,
                        help='Annotated truth from hap.py')
+    parser.add_argument('--stratification_tsv', '-s', dest='stratification_tsv', default=None, required=False, type=str,
+                       help='Custom-created TSV from hap.py with one subtype and no duplicate records other than ' +\
+                       'INDEL and SNP. Tool will analyze genes without errors if set')
+    parser.add_argument('--gene_ids_of_interest', '-n', dest='gene_ids_of_interest', default=None, required=False, type=str,
+                       help='Only analyze these genes (if set)')
     parser.add_argument('--repair_chr_names', '-C', dest='repair_chr_names', default=False, required=False, action='store_true',
                        help='Add "chr" to contig names without (there are sometimes "1" and "chr1" mismatches for grch37)')
+
     parser.add_argument('--only_protien_coding', '-p', dest='only_protien_coding', default=False, required=False, action='store_true',
                        help='Only run for genes with type "protein_coding"')
     parser.add_argument('--output_base', '-o', dest='output_base', default=None, required=False, type=str,
@@ -144,7 +158,7 @@ def unfix_chrom(chrom, args):
     return chrom if not chrom.startswith("chr") else chrom.lstrip("chr")
 
 
-def get_bed_regions(args):
+def get_bed_regions(args, genes_of_interest=None):
     genes = collections.defaultdict(lambda: list())
     switches = collections.defaultdict(lambda: list())
     high_conf_regions = collections.defaultdict(lambda: list())
@@ -170,7 +184,9 @@ def get_bed_regions(args):
                 current_gene = GeneInfo(chrom, start_pos, end_pos, info)
                 # always construct, but only save it if it's protein_coding (or we want all genes)
                 if not args.only_protien_coding or current_gene.info["gene_type"] == 'protein_coding':
-                    genes[chrom].append(current_gene)
+                    # further filtering based on restricted gene set (if appropriate)
+                    if genes_of_interest is None or current_gene.get_gene_id() in genes_of_interest:
+                        genes[chrom].append(current_gene)
             elif type == GENE_TYPE_EXON:
                 current_gene.overlaps.append(BedRecord(chrom, start_pos, end_pos, TYPE_EXON))
             elif type in (GENE_TYPE_CDS, GENE_TYPE_START_CODON, GENE_TYPE_END_CODON):
@@ -522,11 +538,103 @@ def get_genes_stratified_by_bed(genes, bed_regions, bed_desc, update_gene_hiconf
                     total_coverage += min(gene.end, overlap.end) - max(gene.start, overlap.start)
                 gene.highconf_overlap = total_coverage / (gene.end - gene.start)
                 if gene.highconf_overlap > 1.0:
-                    log("Gene {} got highconf coverage {}".format(gene.get_gene_name(), gene.highconf_overlap))
+                    log("Gene {} got highconf coverage {}".format(gene.get_gene_custom_identifier(), gene.highconf_overlap))
         log("\tFor {}, of {} total genes got {} wholly covered, {} partially covered, and {} not covered".format(
             chr, len(chr_genes), len(genes_wholly_covered[chr]), len(genes_partially_covered[chr]), len(genes_not_covered[chr])))
 
     return genes_wholly_covered, genes_partially_covered, genes_not_covered
+
+
+STRAT_TYPE= "Type"
+STRAT_GENE_REGION= "Subset"
+STRAT_F1_SCORE= "METRIC.F1_Score"
+STRAT_PRECISION= "METRIC.Precision"
+STRAT_RECALL= "METRIC.Recall"
+STRAT_REGION_SIZE= "Subset.Size"
+STRAT_REGION_HICONF_SIZE= "Subset.IS_CONF.Size"
+STRAT_TP_T= "TRUTH.TP"
+STRAT_TP_Q= "QUERY.TP"
+STRAT_FN="TRUTH.FN"
+STRAT_FP="QUERY.FP"
+COLUMNS=[STRAT_TYPE, STRAT_GENE_REGION, STRAT_RECALL, STRAT_PRECISION, STRAT_F1_SCORE, STRAT_REGION_SIZE, STRAT_REGION_HICONF_SIZE, STRAT_TP_T, STRAT_TP_Q, STRAT_FN, STRAT_FP]
+
+
+def get_gene_stratification_analysis(strat_tsv, high_conf_threshold=.0):
+
+    data = collections.defaultdict(lambda: collections.defaultdict(lambda: 0.0))
+    column_map = None
+    with open(strat_tsv) as tsv_in:
+        for line in tsv_in:
+            line = line.strip().split("\t")
+            if column_map is None:
+                column_map = {h:i for (i,h) in filter(lambda x: x[1] in COLUMNS, enumerate(line))}
+                continue
+            line_data = {c:line[column_map[c]] for c in COLUMNS}
+            size = int(float(line_data[STRAT_REGION_SIZE]))
+            hc_size = int(float(line_data[STRAT_REGION_HICONF_SIZE]))
+            tp_t = int(float(line_data[STRAT_TP_T]))
+            tp_q = int(float(line_data[STRAT_TP_Q]))
+            fp = int(float(line_data[STRAT_FP]))
+            fn = int(float(line_data[STRAT_FN]))
+            id = line_data[STRAT_GENE_REGION]
+            data[id][STRAT_REGION_SIZE] = size
+            data[id][STRAT_REGION_HICONF_SIZE] = hc_size
+            data[id][STRAT_TP_T] += tp_t
+            data[id][STRAT_TP_Q] += tp_q
+            data[id][STRAT_FP] += fp
+            data[id][STRAT_FN] += fn
+            data[id][STRAT_GENE_REGION] = id
+            # if line_data[TP] != line_data[TP2] and line_data[F1_SCORE] not in ("1.0", ""):
+            #     pass
+
+    gene_ids_above_threshold = set()
+    no_error_gene_ids_above_threshold = set()
+    def get_gene_id(gene_data):
+        return gene_data[STRAT_GENE_REGION].split(";")[1]
+
+    total_genes = 0
+    below_hiconf_threshold = 0
+    above_hiconf_threshold = 0
+    had_no_variants = 0
+    had_variants = 0
+    had_variants_but_no_errors = 0
+    no_errors = 0
+    for (id, gene_data) in data.items():
+        total_genes += 1
+        if gene_data[STRAT_REGION_HICONF_SIZE]/max(gene_data[STRAT_REGION_SIZE], 1) < high_conf_threshold:
+            below_hiconf_threshold += 1
+            continue
+        above_hiconf_threshold += 1
+        gene_ids_above_threshold.add(get_gene_id(gene_data))
+        if gene_data[STRAT_TP_T] + gene_data[STRAT_TP_Q] == 0:
+            had_no_variants += 1
+        else:
+            had_variants += 1
+            if gene_data[STRAT_FP] + gene_data[STRAT_FN] == 0:
+                had_variants_but_no_errors += 1
+        if gene_data[FP] + gene_data[STRAT_FN] == 0:
+            no_errors += 1
+            no_error_gene_ids_above_threshold.add(get_gene_id(gene_data))
+
+    log("Stats for {}:".format(strat_tsv))
+    log("\tGene bodies:              {} ".format(total_genes))
+    log("\t  Above {:.2f} HighConf:    {} ({:.5f})".format(high_conf_threshold, above_hiconf_threshold,
+                                                                 above_hiconf_threshold/total_genes))
+    log("\t    With variants:        {} ({:.5f})".format(had_variants, had_variants/above_hiconf_threshold))
+    log("\t      With no errors:     {} ({:.5f})".format(had_variants_but_no_errors, had_variants_but_no_errors/had_variants))
+    log("\t    With no errors:       {} ({:.5f})".format(no_errors, no_errors/above_hiconf_threshold))
+
+    return data, gene_ids_above_threshold, no_error_gene_ids_above_threshold
+
+
+def get_gene_id_to_gene_map(genes):
+    gene_map = dict()
+    for chrom_genes in genes.values():
+        for gene in chrom_genes:
+            id = gene.get_gene_id()
+            assert(id is not None)
+            gene_map[id] = gene
+    return gene_map
 
 
 def print_highconf_coverage_histogram(genes, bucket_count = 20, coverage_threshold = .8):
@@ -576,7 +684,7 @@ def print_highconf_coverage_histogram(genes, bucket_count = 20, coverage_thresho
             "{}/{}/{}".format(with_coding_frameshift_tp[i], with_coding_frameshift_fp[i], with_coding_frameshift_fn[i])))
 
 
-def plot_frameshift_rates_above_highconf_coverage_threhsold(genes, coverage_threshold=.8):
+def print_frameshift_rates_above_highconf_coverage_threhsold(genes, coverage_threshold=.8):
     total_genes = 0
 
     exon_total_frameshifts = 0
@@ -654,6 +762,97 @@ def get_coverage_state(wholly, partially, nott, chrom, gene):
     if gene in nott[chrom]:
         return NOT_COVERED
     return None
+
+
+def print_coverage_information(coverage_breakdown, gene_lengths=None, outfile=None, first="HICONF", second="PHASED", third="SWITCH"):
+    total_genes = 0
+    for x in coverage_breakdown.values():
+        for y in x.values():
+            for z in y.values():
+                total_genes += z
+
+    for highconf in [WHOLLY, PARTIALLY, NOT_COVERED]:
+        hicf_printed = False
+        hicf_total = 0
+        for phased in [WHOLLY, PARTIALLY, NOT_COVERED]:
+            phsd_printed = False
+            phsd_total = 0
+            for swichd in [WHOLLY, PARTIALLY, NOT_COVERED]:
+                value = coverage_breakdown[highconf][phased][swichd]
+                if value == 0: continue
+                hicf_str = "{} {}  ".format(first, highconf) if not hicf_printed else "" #26
+                phsd_str = "{} {}  ".format(second, phased) if not phsd_printed else ""
+                swch_str = "{} {}  ".format(third, swichd)
+                lengths_str = ""
+                if gene_lengths is not None  and len(gene_lengths[highconf][phased][swichd]) > 0:
+                    lengths = gene_lengths[highconf][phased][swichd]
+                    lengths_str = "{:6d} | {:6d} | {:6d}".format(int(np.quantile(lengths, .25)), int(np.quantile(lengths, .5)), int(np.quantile(lengths, .75)))
+                log("\t{:26s} {:26s} {:26s} {:5d}  {:5.1f}%  {:5.1f}%  {}".format( hicf_str, phsd_str, swch_str, value,
+                    100.0 * value / sum(coverage_breakdown[highconf][phased].values()), 100.0 * value / total_genes, lengths_str))
+                hicf_printed = True
+                phsd_printed = True
+                hicf_total += value
+                phsd_total += value
+            if phsd_total != 0 and len(list(filter(lambda x: x > 0, coverage_breakdown[highconf][phased].values()))) > 1:
+                lengths_str = ""
+                if gene_lengths is not None:
+                    # lengths = [item for item in gene_lengths[highconf][phased]]
+                    lengths = []
+                    for x in gene_lengths[highconf][phased].values():
+                        for y in x:
+                            lengths.append(y)
+                    lengths_str = "{:6d} | {:6d} | {:6d}".format(int(np.quantile(lengths, .25)), int(np.quantile(lengths, .5)), int(np.quantile(lengths, .75)))
+                log("\t{:26s} {:26s} {:26s} {:5d}  {:6s}  {:5.1f}%  {}".format("", "", "       TOTAL", phsd_total, "", 100.0 * phsd_total / total_genes, lengths_str))
+        if hicf_total != 0:
+            lengths_str = ""
+            if gene_lengths is not None:
+                # lengths = [item for sublist in gene_lengths[highconf] for item in sublist]
+                lengths = []
+                for x in gene_lengths[highconf].values():
+                    for y in x.values():
+                        for z in y:
+                            lengths.append(z)
+                lengths_str = "{:6d} | {:6d} | {:6d}".format(int(np.quantile(lengths, .25)), int(np.quantile(lengths, .5)), int(np.quantile(lengths, .75)))
+            log("\t{:26s} {:26s} {:26s} {:5d}  {:6s}  {:5.1f}%  {}".format("", "       TOTAL", "", hicf_total, "", 100.0 * hicf_total / total_genes, lengths_str))
+
+
+def write_coverage_information(coverage_breakdown, gene_lengths, outfile, file_id):
+
+    modified_coverage_breakdown = collections.defaultdict(
+        lambda: collections.defaultdict(lambda: collections.defaultdict(lambda: 0)))
+    modified_coverage_breakdown_gene_lengths = collections.defaultdict(
+        lambda: collections.defaultdict(lambda: collections.defaultdict(lambda: list())))
+
+    for highconf in [WHOLLY, PARTIALLY, NOT_COVERED]:
+        for phased in [WHOLLY, PARTIALLY, NOT_COVERED]:
+            for swichd in [WHOLLY, PARTIALLY, NOT_COVERED]:
+                value = coverage_breakdown[highconf][phased][swichd]
+                lengths = gene_lengths[highconf][phased][swichd]
+                ps_m = NO_ERROR if phased == NOT_COVERED or highconf == NOT_COVERED else ERROR
+                sw_m = NO_ERROR if swichd == NOT_COVERED else ERROR
+                modified_coverage_breakdown[highconf][ps_m][sw_m] += value
+                for l in lengths:
+                    modified_coverage_breakdown_gene_lengths[highconf][ps_m][sw_m].append(l)
+
+    for hiconf in [WHOLLY, PARTIALLY, NOT_COVERED]:
+        for phased in [ERROR, NO_ERROR]:
+            for swichd in [ERROR, NO_ERROR]:
+                lengths = modified_coverage_breakdown_gene_lengths[hiconf][phased][swichd]
+                data = [
+                    hiconf,
+                    phased,
+                    swichd,
+                    file_id,
+                    str(modified_coverage_breakdown[hiconf][phased][swichd]),
+                    "--" if len(lengths) == 0 else str(int(np.quantile(lengths, .25))),
+                    "--" if len(lengths) == 0 else str(int(np.quantile(lengths, .5))),
+                    "--" if len(lengths) == 0 else str(int(np.quantile(lengths, .75)))
+                ]
+                print("\t".join(data), file=outfile)
+                # print("\t".join(data))
+
+
+
 
 
 def plot_coverage_donut(coverage_breakdown, output_base, figsize=(3.5, 3.5)):
@@ -937,7 +1136,188 @@ def plot_coverage_grouped_bar(coverage_breakdown, output_base, figsize=(3.5, 3.5
     plt.show()
 
 
-def plot_coverage_grouped_bar_manual_for_files(output_base, figsize=(3.5, 3.5)):
+def plot_stratification_grouped_bar(stratification_breakdown, output_base, figsize=(3.5, 3.5)):
+
+    # data we plot
+    wholeP = 0
+    wholeP_notS = 0
+    wholeP_notS_noE = 0
+    partP = 0
+    partP_notS = 0
+    partP_notS_noE = 0
+    notP = 0
+    notP_notS = 0
+    notP_notS_noE = 0
+
+    # fill in the data
+    for phased in [WHOLLY, PARTIALLY, NOT_COVERED]:
+        for switched in [WHOLLY, PARTIALLY, NOT_COVERED]:
+            for errored in [WHOLLY, NOT_COVERED]:
+                value = stratification_breakdown[phased][switched][errored]
+                if value == 0: continue
+                if phased == WHOLLY:
+                    wholeP += value
+                    if switched == NOT_COVERED:
+                        wholeP_notS += value
+                        if errored == NOT_COVERED:
+                            wholeP_notS_noE += value
+                elif phased == PARTIALLY:
+                    partP += value
+                    if switched == NOT_COVERED:
+                        partP_notS += value
+                        if errored == NOT_COVERED:
+                            partP_notS_noE += value
+                elif phased == NOT_COVERED:
+                    notP += value
+                    if switched == NOT_COVERED:
+                        notP_notS += value
+                        if errored == NOT_COVERED:
+                            notP_notS_noE += value
+    total = wholeP + partP + notP
+
+    # set width of bar
+    barWidth = 0.25
+
+    # set height of bar
+    bars1 = [wholeP, partP, notP]
+    bars2 = [wholeP_notS, partP_notS, notP_notS]
+    bars3 = [wholeP_notS_noE, partP_notS_noE, notP_notS_noE]
+
+    a, b, c = [plt.cm.Purples, plt.cm.Blues, plt.cm.Greens]
+
+    # Set position of bar on X axis
+    r1 = np.arange(len(bars1))
+    r2 = [x + barWidth for x in r1]
+    r3 = [x + barWidth for x in r2]
+
+    # Make the plot
+    fig, (ax1) = plt.subplots(nrows=1,ncols=1,figsize=figsize)
+    rect1 = ax1.bar(r1, bars1, color=[a(0.6), b(0.6), c(0.6)], hatch='', width=barWidth, edgecolor='white', label='Total Genes')
+    rect2 = ax1.bar(r2, bars2, color=[a(0.45), b(0.45), c(0.45)], hatch='',  width=barWidth, edgecolor='white', label='No Switch Errors')
+    rect3 = ax1.bar(r3, bars3, color=[a(0.3), b(0.3), c(0.3)], hatch='', width=barWidth, edgecolor='white', label='No CDS Variant Errors')
+
+    # Add xticks on the middle of the group bars
+    # plt.xlabel('', fontweight='bold')
+    plt.xticks([r + barWidth for r in range(len(bars1))], ['Wholly\nPhased', 'Partly\nPhased', 'Not\nPhased'])
+
+    def autolabel(rects, percentage_denominator):
+        """Attach a text label above each bar in *rects*, displaying its height."""
+        for i, rect in enumerate(rects):
+            height = rect.get_height()
+            if height == 0: continue
+            ax1.annotate('{} ({:4.1f}%)'.format(height, 100.0*height/max(1,percentage_denominator[i])),
+                        xy=(rect.get_x() + rect.get_width() / 2, height - .25 * max(bars1)),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points", rotation=90,
+                        ha='center', va='bottom')#, weight='bold')
+
+    autolabel(rect1, [total, total, total])
+    autolabel(rect2, bars1)
+    autolabel(rect3, bars2)
+
+    # Create legend & Show graphic
+    plt.legend()
+    plt.tight_layout()
+    ax1.set_ylabel("Gene Count")
+    ax1.set_xlabel("Coverage Classification")
+
+    # show it
+    if output_base is not None:
+        plt.savefig("{}.stratification_grouped_bar.pdf".format(output_base), format='pdf', dpi=300)
+    plt.show()
+
+
+def plot_manual_unerrored_grouped_bar(output_base, figsize=(3.5, 3.5), ont=True):
+    if ont:
+        total = 3793
+        total_phased = 3540
+        total_phased_no_switch = 3502
+        total_cds_no_error = 7 + 30 + 3481 + 37 + 2 + 213
+        total_exon_no_error = 6 + 27 + 3121 + 29 + 2 + 199
+        total_gene_no_error = 5 + 10 + 1738 + 6 + 1 + 124
+        total_phased_no_switch_cds_no_error = 3481
+        total_phased_no_switch_exon_no_error = 3121
+        total_phased_no_switch_gene_no_error = 1738
+    else:
+        total = 2500 + 365 + 928
+        total_phased = 2500
+        total_phased_no_switch = 2476
+        total_cds_no_error = 928 + 365 + 2474 + 19 + 5
+        total_exon_no_error = 916 + 1 + 354 + 5 + 2446 + 18 + 5
+        total_gene_no_error = 740 + 1 + 190 + 2 + 2086 + 13 + 5
+        total_phased_no_switch_cds_no_error = 2474
+        total_phased_no_switch_exon_no_error = 2446
+        total_phased_no_switch_gene_no_error = 2086
+
+    # set width of bar
+    barWidth = 0.25
+
+    # set height of bar
+    bars1 = [total, total_phased, total_phased_no_switch]
+    bars2 = [total_cds_no_error, total_exon_no_error, total_gene_no_error]
+    bars3 = [total_phased_no_switch_cds_no_error, total_phased_no_switch_exon_no_error, total_phased_no_switch_gene_no_error]
+
+    r1_col = plt.cm.Reds if not ont else plt.cm.Oranges
+    r2_col = plt.cm.YlOrBr if ont else plt.cm.Greens
+    r3_col = plt.cm.Blues if ont else plt.cm.Purples
+
+    r1_col = plt.cm.Reds if ont else plt.cm.YlOrBr
+    r2_col = plt.cm.PuRd if ont else plt.cm.Greens
+    r3_col = plt.cm.Purples if ont else plt.cm.Blues
+
+    r1_colors = [r1_col(0.55), r1_col(0.45), r1_col(0.35)] #if ont else [r1_col(0.6), r1_col(0.5), r1_col(0.4)]
+    r2_colors = [r2_col(0.6), r2_col(0.5), r2_col(0.4)] if ont else [r2_col(0.6), r2_col(0.45), r2_col(0.3)]
+    r3_colors = [r3_col(0.6), r3_col(0.45), r3_col(0.3)] #if not ont else [r3_col(0.45), r3_col(0.55), r3_col(0.65)]
+
+    # Set position of bar on X axis
+    r1 = [1, 1+barWidth, 1+2*barWidth]
+    r2 = [2, 2+barWidth, 2+2*barWidth]
+    r3 = [3, 3+barWidth, 3+2*barWidth]
+
+    # Make the plot
+    fig, (ax1) = plt.subplots(nrows=1, ncols=1, figsize=figsize)
+    rect1 = ax1.bar(r1, bars1, color=r1_colors, hatch='', width=barWidth, edgecolor='white')
+    rect2 = ax1.bar(r2, bars2, color=r2_colors, hatch='', width=barWidth, edgecolor='white')
+    rect3 = ax1.bar(r3, bars3, color=r3_colors, hatch='', width=barWidth, edgecolor='white')
+
+    # Add xticks on the middle of the group bars
+    # plt.xlabel('', fontweight='bold')
+    plt.xticks([r + barWidth for r in range(1,4)], ['Gene\nPhasing', 'Genes\nWithout\nSNP or\nINDEL\nErrors', 'Genes\nWithout\nSNP, INDEL,\nor Switch\nErrors'])
+    ylim_min = 0
+    ylim_max = total
+    def autolabel(rects, percentage_denominator, labels):
+        """Attach a text label above each bar in *rects*, displaying its height."""
+        for i, rect in enumerate(rects):
+            height = rect.get_height()
+            if height == 0: continue
+            ax1.annotate('{} ({:4.1f}%)'.format(height, 100.0 * height / max(1, percentage_denominator[i])),
+                         xy=(rect.get_x() + rect.get_width() / 2, height - .25 * max(bars1)),
+                         xytext=(0, 3),  # 3 points vertical offset
+                         textcoords="offset points", rotation=90,
+                         ha='center', va='bottom')  # , weight='bold')
+            ax1.annotate('{}'.format(labels[i]),
+                        xy=(rect.get_x() + rect.get_width() / 2, ylim_min + .025 * (ylim_max - ylim_min)),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points", rotation=90, color="black",
+                        ha='center', va='bottom')#, weight='bold')
+
+    autolabel(rect1, [total, total, total], ["All Genes", "Wholly Phased", "No Switch"])
+    autolabel(rect2, [total, total, total], ["CDS", "Exon", "Gene"])
+    autolabel(rect3, [total, total, total], ["CDS", "Exon", "Gene"])
+
+    # Create legend & Show graphic
+    ax1.set_ylabel("Gene Count")
+    ax1.set_xlabel("Classification")
+    plt.tight_layout()
+
+    # show it
+    if output_base is not None:
+        plt.savefig("{}.{}.errored_grouped_bar.pdf".format(output_base, "ont" if ont else "ccs"), format='pdf', dpi=300)
+    plt.show()
+
+
+
+def plot_manual_coverage_bar(output_base, figsize=(3.5, 3.5)):
     # data we plot
     total_genes_38 = 60656
     total_genes_37 = 62438
@@ -981,7 +1361,7 @@ def plot_coverage_grouped_bar_manual_for_files(output_base, figsize=(3.5, 3.5)):
     plt.show()
 
 
-def plot_accuracy_grouped_bar_manual_for_files(output_base, plot_snp, figsize=(3.5, 3.5)):
+def plot_manual_accuracy_bar(output_base, plot_snp, figsize=(3.5, 3.5)):
 
     # data we plot
     GENOME = "Genome"
@@ -1119,116 +1499,117 @@ def main():
         output_base = os.path.basename(args.phased_vcf).rstrip(".gz").rstrip(".vcf")
 
     # one-off plot for the paper
-    plot_accuracy_grouped_bar_manual_for_files(output_base, True)
-    plot_accuracy_grouped_bar_manual_for_files(output_base, False)
+    # plot_accuracy_grouped_bar_manual_for_files(output_base, True)
+    # plot_accuracy_grouped_bar_manual_for_files(output_base, False)
     # plot_coverage_grouped_bar_manual_for_files(output_base)
-    sys.exit()
+    # plot_manual_unerrored_grouped_bar(output_base)
+    # plot_manual_unerrored_grouped_bar(output_base, ont=False)
+    # sys.exit()
 
     # get data
+    restricted_gene_ids = None
+    if args.gene_ids_of_interest is not None:
+        restricted_gene_ids = set()
+        with open(args.gene_ids_of_interest) as gioi:
+            for line in gioi:
+                restricted_gene_ids.add(line.strip())
+
     phasesets = get_phasesets_from_vcf(args.phased_vcf, args)
-    genes, switches, high_conf_regions = get_bed_regions(args)
+    genes, switches, high_conf_regions = get_bed_regions(args, restricted_gene_ids)
     genes_wholly_hiconf, genes_partially_hiconf, genes_not_hiconf = get_genes_stratified_by_bed(genes, high_conf_regions, "HIGHCONF", True)
     genes_wholly_phased, genes_partially_phased, genes_not_phased = get_genes_stratified_by_bed(genes, phasesets, "PHASESET")
     genes_wholly_swichd, genes_partially_swichd, genes_not_swichd = get_genes_stratified_by_bed(genes, switches, "SWITCHES")
-    get_precision_recall_for_genes(genes, args)
-
-    # output data
-    output_data_tsv = None
-    if output_base is not None:
-        output_data_tsv = "{}.gene_phasing_stats.tsv".format(output_base)
-    outputstream = None
+    # get_precision_recall_for_genes(genes, args)
 
     # info over all genes
     coverage_breakdown = collections.defaultdict(lambda : collections.defaultdict(lambda : collections.defaultdict(lambda : 0)))
+    coverage_breakdown_gene_lengths = collections.defaultdict(lambda : collections.defaultdict(lambda : collections.defaultdict(lambda : list())))
     highconf_variants = collections.defaultdict(lambda : collections.defaultdict(lambda : 0))
     total_genes = 0
 
-    # write data out
-    try:
-        if output_data_tsv is not None:
-            outputstream = open(output_data_tsv, 'w')
+    strat_coverage_breakdown, gene_ids_above_threshold, no_error_gene_ids_above_threshold = None, None, None
+    strat_coverage_breakdown_gene_lengths = None
+    if args.stratification_tsv is not None:
+        gene_strat_data, gene_ids_above_threshold, no_error_gene_ids_above_threshold = get_gene_stratification_analysis(
+            args.stratification_tsv)
+        # (only for genes with strat coverage)
+        # VCF_PHASED -> SWITCHES -> HAS_ERROR (wholly/not)
+        strat_coverage_breakdown = collections.defaultdict(
+            lambda: collections.defaultdict(lambda: collections.defaultdict(lambda: 0)))
+        strat_coverage_breakdown_gene_lengths = collections.defaultdict(
+            lambda: collections.defaultdict(lambda: collections.defaultdict(lambda: list())))
 
-        # write out determined data
-        for chrom in sorted(list(genes.keys())):
-            for gene in genes[chrom]:
-                # get coverages
-                hiconf_cov = get_coverage_state(genes_wholly_hiconf, genes_partially_hiconf, genes_not_hiconf, chrom, gene)
-                phased_cov = get_coverage_state(genes_wholly_phased, genes_partially_phased, genes_not_phased, chrom, gene)
-                swichd_cov = get_coverage_state(genes_wholly_swichd, genes_partially_swichd, genes_not_swichd, chrom, gene)
+    # get coverage data
+    for chrom in sorted(list(genes.keys())):
+        for gene in genes[chrom]:
+            # get coverages
+            hiconf_cov = get_coverage_state(genes_wholly_hiconf, genes_partially_hiconf, genes_not_hiconf, chrom, gene)
+            phased_cov = get_coverage_state(genes_wholly_phased, genes_partially_phased, genes_not_phased, chrom, gene)
+            swichd_cov = get_coverage_state(genes_wholly_swichd, genes_partially_swichd, genes_not_swichd, chrom, gene)
 
-                # describe overlaps
-                hiconf_overlaps = []
-                phased_overlaps = []
-                swichd_overlaps = []
-                for bed in gene.overlaps:
-                    dest = (hiconf_overlaps if bed.type == TYPE_HICONF else
-                        (phased_overlaps if bed.type == TYPE_PHASESET else
-                        (swichd_overlaps if bed.type == TYPE_SWITCH else None)))
-                    if dest is None: continue
-                    dest.append("{}:{}-{}".format(bed.chrom, bed.end, bed.start))
-                hiconf_overlaps = "[\"" + "\",\"".join(hiconf_overlaps) + "\"]"
-                phased_overlaps = "[\"" + "\",\"".join(phased_overlaps) + "\"]"
-                swichd_overlaps = "[\"" + "\",\"".join(swichd_overlaps) + "\"]"
+            # describe overlaps
+            hiconf_overlaps = []
+            phased_overlaps = []
+            swichd_overlaps = []
+            for bed in gene.overlaps:
+                dest = (hiconf_overlaps if bed.type == TYPE_HICONF else
+                    (phased_overlaps if bed.type == TYPE_PHASESET else
+                    (swichd_overlaps if bed.type == TYPE_SWITCH else None)))
+                if dest is None: continue
+                dest.append("{}:{}-{}".format(bed.chrom, bed.end, bed.start))
 
-                # get precision/recall
-                total_variants = gene.get_total_variants()
-                snp_precision = "-1" if total_variants == 0 else "{:.5f}".format(gene.snp_precision)
-                snp_recall = "-1" if total_variants == 0 else "{:.5f}".format(gene.snp_recall)
-                snp_tp, snp_fp, snp_fn = gene.snp_tp, gene.snp_fp, gene.snp_fn
-                indel_precision = "-1" if total_variants == 0 else "{:.5f}".format(gene.indel_precision)
-                indel_recall = "-1" if total_variants == 0 else "{:.5f}".format(gene.indel_recall)
-                indel_tp, indel_fp, indel_fn = gene.indel_tp, gene.indel_fp, gene.indel_fn
+            # get precision/recall
+            total_variants = gene.get_total_variants()
+            snp_tp, snp_fp, snp_fn = gene.snp_tp, gene.snp_fp, gene.snp_fn
+            indel_tp, indel_fp, indel_fn = gene.indel_tp, gene.indel_fp, gene.indel_fn
 
-                # for whole stats
-                total_genes += 1
-                coverage_breakdown[hiconf_cov][phased_cov][swichd_cov] += 1
-                if hiconf_cov == WHOLLY:
-                    highconf_variants[SNP][TP] += snp_tp
-                    highconf_variants[SNP][FP] += snp_fp
-                    highconf_variants[SNP][FN] += snp_fn
-                    highconf_variants[INDEL][TP] += indel_tp
-                    highconf_variants[INDEL][FP] += indel_fp
-                    highconf_variants[INDEL][FN] += indel_fn
+            # for whole stats
+            total_genes += 1
+            coverage_breakdown[hiconf_cov][phased_cov][swichd_cov] += 1
+            coverage_breakdown_gene_lengths[hiconf_cov][phased_cov][swichd_cov].append(gene.end - gene.start)
+            if hiconf_cov == WHOLLY:
+                highconf_variants[SNP][TP] += snp_tp
+                highconf_variants[SNP][FP] += snp_fp
+                highconf_variants[SNP][FN] += snp_fn
+                highconf_variants[INDEL][TP] += indel_tp
+                highconf_variants[INDEL][FP] += indel_fp
+                highconf_variants[INDEL][FN] += indel_fn
+
+            # stratification info (if available)
+            if strat_coverage_breakdown is not None:
+                gene_id = gene.get_gene_id()
+                if gene_id in gene_ids_above_threshold:
+                    error_coverage = NOT_COVERED if gene_id in no_error_gene_ids_above_threshold else WHOLLY
+                    strat_coverage_breakdown[phased_cov][swichd_cov][error_coverage] += 1
+                    strat_coverage_breakdown_gene_lengths[phased_cov][swichd_cov][error_coverage].append(gene.end - gene.start)
 
 
-                # todo
-                # write to outputstream
-
-    finally:
-        if output_data_tsv is not None and outputstream is not None:
-            outputstream.close()
-
-    log("")
-    print_highconf_coverage_histogram(genes)
-    log("")
-    plot_frameshift_rates_above_highconf_coverage_threhsold(genes)
-    log("")
-    plot_frameshift_rates_above_highconf_coverage_threhsold(genes, 0.0)
+    # log("")
+    # print_highconf_coverage_histogram(genes)
+    # log("")
+    # print_frameshift_rates_above_highconf_coverage_threhsold(genes)
+    # log("")
+    # print_frameshift_rates_above_highconf_coverage_threhsold(genes, 0.0)
     log("")
     log("Coverage Breakdown:")
-    for highconf in [WHOLLY, PARTIALLY, NOT_COVERED]:
-        hicf_printed = False
-        hicf_total = 0
-        for phased in [WHOLLY, PARTIALLY, NOT_COVERED]:
-            phsd_printed = False
-            phsd_total = 0
-            for swichd in [WHOLLY, PARTIALLY, NOT_COVERED]:
-                value = coverage_breakdown[highconf][phased][swichd]
-                if value == 0: continue
-                hicf_str = "HICONF {}  ".format(highconf) if not hicf_printed else "" #26
-                phsd_str = "PHASED {}  ".format(phased) if not phsd_printed else ""
-                swch_str = "SWITCH {}  ".format(swichd)
-                log("\t{:26s} {:26s} {:26s} {:5d}  {:5.1f}%  {:5.1f}%".format( hicf_str, phsd_str, swch_str, value,
-                    100.0 * value / sum(coverage_breakdown[highconf][phased].values()), 100.0 * value / total_genes))
-                hicf_printed = True
-                phsd_printed = True
-                hicf_total += value
-                phsd_total += value
-            if phsd_total != 0 and len(list(filter(lambda x: x > 0, coverage_breakdown[highconf][phased].values()))) > 1:
-                log("\t{:26s} {:26s} {:26s} {:5d}  {:6s}  {:5.1f}%".format("", "", "       TOTAL", phsd_total, "", 100.0 * phsd_total / total_genes))
-        if hicf_total != 0:
-            log("\t{:26s} {:26s} {:26s} {:5d}  {:6s}  {:5.1f}%".format("", "       TOTAL", "", hicf_total, "", 100.0 * hicf_total / total_genes))
+    print_coverage_information(coverage_breakdown, coverage_breakdown_gene_lengths, first="HICONF", second="PHASED", third="SWITCH")
+    if strat_coverage_breakdown is not None:
+        log("")
+        log("Stratification Breakdown:")
+        print_coverage_information(strat_coverage_breakdown, strat_coverage_breakdown_gene_lengths, first="PHASED", second="SWITCH", third="ERRORD")
+        strat_basename = os.path.basename(args.stratification_tsv)
+        strat_id = strat_basename
+        if "gene" in strat_id:
+            strat_id = "gene"
+        elif "exon" in strat_id:
+            strat_id = "exon"
+        elif "cds" in strat_id:
+            strat_id = "cds"
+        with open("{}.{}.strat_summary.tsv".format(output_base, strat_id), 'w') as outfile:
+            write_coverage_information(strat_coverage_breakdown, strat_coverage_breakdown_gene_lengths, outfile, strat_id)
+
     # plot_coverage_donut(coverage_breakdown, output_base)
+    plot_stratification_grouped_bar(strat_coverage_breakdown, output_base)
     plot_coverage_grouped_bar(coverage_breakdown, output_base)
 
     snp_tp = highconf_variants[SNP][TP]
@@ -1237,14 +1618,15 @@ def main():
     indel_tp = highconf_variants[INDEL][TP]
     indel_fp = highconf_variants[INDEL][FP]
     indel_fn = highconf_variants[INDEL][FN]
-    log("")
-    log("Wholly Covered HiConf Gene Variant Stats:")
-    log("\tSNP Precision:   {:.5f} {:8}/{}+{}".format(snp_tp/max(1, snp_tp+snp_fp), snp_tp, snp_tp, snp_fp))
-    log("\tSNP Recall:      {:.5f} {:8}/{}+{}".format(snp_tp/max(1, snp_tp+snp_fn), snp_tp, snp_tp, snp_fn))
-    log("\tSNP F1:          {:.5f} {:8}/({}+({}+{})/2)".format(snp_tp/max(1, snp_tp+(snp_fn+snp_fp)/2), snp_tp, snp_tp, snp_fn,snp_fp))
-    log("\tINDEL Precision: {:.5f} {:8}/{}+{}".format(indel_tp/max(1, indel_tp+indel_fp), indel_tp, indel_tp, indel_fp))
-    log("\tINDEL Recall:    {:.5f} {:8}/{}+{}".format(indel_tp/max(1, indel_tp+indel_fn), indel_tp, indel_tp, indel_fn))
-    log("\tINDEL F1:        {:.5f} {:8}/({}+({}+{})/2)".format(indel_tp/max(1, indel_tp+(indel_fn+indel_fp)/2), indel_tp, indel_tp, indel_fn,indel_fp))
+    if sum([snp_tp, snp_fp, snp_fn, indel_tp, indel_fn, indel_fp]) != 0:
+        log("")
+        log("Wholly Covered HiConf Gene Variant Stats:")
+        log("\tSNP Precision:   {:.5f} {:8}/{}+{}".format(snp_tp/max(1, snp_tp+snp_fp), snp_tp, snp_tp, snp_fp))
+        log("\tSNP Recall:      {:.5f} {:8}/{}+{}".format(snp_tp/max(1, snp_tp+snp_fn), snp_tp, snp_tp, snp_fn))
+        log("\tSNP F1:          {:.5f} {:8}/({}+({}+{})/2)".format(snp_tp/max(1, snp_tp+(snp_fn+snp_fp)/2), snp_tp, snp_tp, snp_fn,snp_fp))
+        log("\tINDEL Precision: {:.5f} {:8}/{}+{}".format(indel_tp/max(1, indel_tp+indel_fp), indel_tp, indel_tp, indel_fp))
+        log("\tINDEL Recall:    {:.5f} {:8}/{}+{}".format(indel_tp/max(1, indel_tp+indel_fn), indel_tp, indel_tp, indel_fn))
+        log("\tINDEL F1:        {:.5f} {:8}/({}+({}+{})/2)".format(indel_tp/max(1, indel_tp+(indel_fn+indel_fp)/2), indel_tp, indel_tp, indel_fn,indel_fp))
 
 
     pass
