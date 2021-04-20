@@ -93,7 +93,7 @@ def print_methyl_loci_differences(loci):
         # values + idx
         coverage_value = fwd.coverage - rev.coverage
         coverage_value_idx = min(size_factor * 2 , max(0, size_factor + coverage_value))
-        coverage_ratio = coverage_value / ((fwd.coverage + rev.coverage)/2)
+        coverage_ratio = coverage_value / max(1, (fwd.coverage + rev.coverage)/2)
         coverage_ratio_idx = min(size_factor * 2 , max(0, size_factor + int(size_factor * coverage_ratio)))
         methyl_value = fwd.methyl_count - rev.methyl_count
         methyl_value_idx = min(size_factor * 2 , max(0, size_factor + methyl_value))
