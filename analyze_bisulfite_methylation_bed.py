@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument('--input', '-i', dest='input', required=True, type=str,
                        help='methylation bed input file')
 
-    parser.add_argument('--min_coverage', '-d', dest='min_coverage', required=False, default=8, type=int,
+    parser.add_argument('--min_coverage', '-d', dest='min_coverage', required=False, default=10, type=int,
                        help='Minimum depth/coverage for record to be used in analysis')
 
     parser.add_argument('--output_base', '-o', dest='output_base', required=False, default=None, type=str,
@@ -61,6 +61,8 @@ def parse_args():
                        help='Stratify calls into quartiles')
     parser.add_argument('--write_quintile_beds', '-5', dest='write_quintile_beds', default=False, required=False, action='store_true',
                        help='Stratify calls into quintiles')
+    parser.add_argument('--write_min_depth_bed', '-D', dest='write_min_depth_bed', default=None, type=int, required=False, action='store',
+                       help='Write depth bed connecting adjacent loci which do not meet depth requirements, must specify desired depth')
 
     return parser.parse_args()
 
@@ -122,6 +124,8 @@ def print_methyl_loci_differences(loci):
 
 def main():
     args = parse_args()
+    if args.write_min_depth_bed is not None and args.min_coverage != 0:
+        log("Because of lazy programmer, you must specify min_coverage of 0 to use write_min_depth_bed")
 
     # data we want
     all_methyl_records = list()
@@ -177,10 +181,10 @@ def main():
 
     # write
     should_write = True in [args.write_quartile_beds, args.write_quintile_beds, args.write_full_bed]
+    output_base = args.output_base
+    if output_base is None:
+        output_base = ".".join(os.path.basename(args.input).split(".")[:-1])
     if should_write:
-        output_base = args.output_base
-        if output_base is None:
-            output_base = ".".join(os.path.basename(args.input).split(".")[:-1])
         log("\nWriting output to files with base {}:".format(output_base))
 
         full_file_name = "{}.full.bed".format(output_base)
@@ -226,6 +230,51 @@ def main():
             if full_out is not None: full_out.close()
             if quartile_outs is not None: [x.close() for x in quartile_outs]
             if quintile_outs is not None: [x.close() for x in quintile_outs]
+
+    if args.write_min_depth_bed is not None:
+        mdb_filename = "{}.below_min_depth_{}.bed".format(output_base, args.write_min_depth_bed)
+        log("Writing min depth bed to {}".format(mdb_filename))
+        with open(mdb_filename, 'w') as fout:
+            # data to track consecutive failing depths
+            curr_chrom = None
+            depth_fail_start_pos = None
+            prev_fail_locus = None
+
+            # how to write
+            def write_depth_locus(dfsp, l):
+                if dfsp is None or l is None:
+                    return
+                fout.write("{}\t{}\t{}\n".format(l.chr, dfsp, l.end_pos))
+
+            # look at all loci
+            for locus in all_methyl_loci:
+                # init first chrom
+                if curr_chrom is None:
+                    curr_chrom = locus.chr
+
+                # init new chrom
+                if locus.chr != curr_chrom:
+                    # does nothing if not set
+                    write_depth_locus(depth_fail_start_pos, prev_fail_locus)
+                    # init
+                    curr_chrom = locus.chr
+                    depth_fail_start_pos = None
+                    prev_fail_locus = None
+
+                # most of the work
+                if locus.coverage < 2 * args.write_min_depth_bed:
+                    if depth_fail_start_pos is None:
+                        depth_fail_start_pos = locus.start_pos
+                    prev_fail_locus = locus
+                else:
+                    if prev_fail_locus is not None:
+                        write_depth_locus(depth_fail_start_pos, prev_fail_locus)
+                    depth_fail_start_pos = None
+                    prev_fail_locus = None
+
+            # potentially write last one
+            write_depth_locus(depth_fail_start_pos, prev_fail_locus)
+
 
 
 if __name__ == "__main__":

@@ -12,7 +12,14 @@ import os
 import seaborn as sns
 import pandas
 import math
+from scipy.stats import pearsonr
 
+plt.style.use('ggplot')
+text_fontsize = 8
+# plt.rcParams['ytick.labelsize']=text_fontsize+4
+plt.rcParams.update({'font.size': text_fontsize})
+plt.rcParams['pdf.fonttype'] = 42
+plt.switch_backend('agg')
 
 CHR_IDX = 0
 START_IDX = 1
@@ -64,8 +71,10 @@ def parse_args():
 
     parser.add_argument('--min_coverage', '-d', dest='min_coverage', required=False, default=8, type=int,
                        help='Minimum depth/coverage for each directional record to be used in analysis')
-    parser.add_argument('--boolean_methyl_threshold', '-t', dest='boolean_methyl_threshold', required=False, default=.8, type=float,
-                       help='Threshold used to quantify boolean "methylated" or "not"')
+    parser.add_argument('--boolean_truth_methyl_threshold', '-T', dest='boolean_truth_methyl_threshold', required=False, default=.95, type=float,
+                       help='Threshold used to quantify boolean "methylated" or "not" in truth')
+    parser.add_argument('--boolean_query_methyl_threshold', '-t', dest='boolean_query_methyl_threshold', required=False, default=.8, type=float,
+                       help='Threshold used to quantify boolean "methylated" or "not" in query')
 
     parser.add_argument('--output_base', '-o', dest='output_base', required=False, default=None, type=str,
                        help='Write output files, otherwise will use input bed name as prefix')
@@ -182,7 +191,7 @@ def plot_truth_query_heatmap(truth_query_pairs, output_base=None, size=10, fig_s
             text = ax.text(j, i, pair_maps[i][j],
                            ha="center", va="center", color="w")
 
-    ax.set_title("BS vs Guppy Methyl Ratio")
+    plt.suptitle("BS vs Guppy Methyl Ratio", y=1)
     ax.set_ylabel("Guppy Methyl Ratio")
     ax.set_xlabel("Bisulfite Methyl Ratio")
     fig.tight_layout()
@@ -204,7 +213,7 @@ def plot_jointplot_hist(truth_query_pairs, output_base=None, bins=5, fig_size=8)
 
     sns.jointplot(data=df, x=columns[0], y=columns[1], bins=bins, height=fig_size, kind="hist", marginal_kws=dict(bins=bins))
 
-    plt.title("BS vs Guppy Methyl Ratio")
+    plt.suptitle("BS vs Guppy Methyl Ratio", y=1)
     plt.tight_layout()
     if output_base is not None:
         filename="{}.bs_vs_guppy_jointplot_hist_{}.png".format(output_base, bins)
@@ -220,23 +229,27 @@ def plot_jointplot_reg(truth_query_pairs, output_base=None, fig_size=8, bins=20)
     #     df_prep.append([tqp[0], tqp[1]])
 
     columns = ["Bisulfite Methyl Ratio", "Guppy Methyl Ratio"]
-    if len(truth_query_pairs) > 100000:
-        ratio = 100000 / len(truth_query_pairs)
+    num_of_datapoint = 25000
+    if len(truth_query_pairs) > num_of_datapoint:
+        ratio = num_of_datapoint / len(truth_query_pairs)
         truth_query_pairs = list(filter(lambda x: np.random.random() < ratio, truth_query_pairs))
     df = pandas.DataFrame(truth_query_pairs, columns=columns)
 
     avg_points_per_bin = len(truth_query_pairs) / (bins * bins)
     # alpha = min(1.0, 10.0 / avg_points_per_bin)
     # log("\tappb: {}, alpha: {}".format(avg_points_per_bin, alpha))
-    sns.jointplot(data=df, x=columns[0], y=columns[1], marker='o', height=fig_size, kind="reg",
+    p = sns.jointplot(data=df, x=columns[0], y=columns[1], marker='o', height=fig_size, kind="reg",
                   marginal_kws={'bins': 20}, joint_kws = { 'line_kws':{'color':'red'}, 'scatter_kws':{'alpha': .05, 'linewidth':0}})
+    p.ax_joint.text(0.05, 0.95, "Pearson's r: {:.3f}".format(pearsonr(df[columns[0]], df[columns[1]])[0]), horizontalalignment='left', size='medium', color='black', weight='semibold')
 
-    plt.title("BS vs Guppy Methyl Ratio")
-    plt.tight_layout()
+    # plt.suptitle("BS vs Guppy Methyl Ratio", y=1)
+    plt.suptitle("Bisulfite vs Guppy 4.5.4 Methylation Ratio (chr20)", y=.975)
+    # plt.tight_layout()
     if output_base is not None:
         filename="{}.bs_vs_guppy_jointplot_reg.png".format(output_base)
         log("\tSaving plot to {}".format(filename))
-        plt.savefig(filename)
+        plt.savefig(filename.replace(".png", ".pdf"), format='pdf', dpi=300)
+        # plt.savefig(filename)
     plt.show()
     plt.close()
 
@@ -341,13 +354,13 @@ def main():
             query_methyl_ratio = round(methyl_locus.avg_methyl_ratio, 5)
             if truth_methyl_ratio is None:
                 continue
-            if truth_methyl_ratio >= args.boolean_methyl_threshold:
-                if query_methyl_ratio >= args.boolean_methyl_threshold:
+            if truth_methyl_ratio >= args.boolean_truth_methyl_threshold:
+                if query_methyl_ratio >= args.boolean_query_methyl_threshold:
                     threshold_tp += 1
                 else:
                     threshold_fn += 1
             else:
-                if query_methyl_ratio >= args.boolean_methyl_threshold:
+                if query_methyl_ratio >= args.boolean_query_methyl_threshold:
                     threshold_fp += 1
                 else:
                     threshold_tn += 1
@@ -360,14 +373,14 @@ def main():
     print_methyl_loci_differences(all_methyl_loci)
 
     # log accuracy
-    log("Boolean accuracies based on threshold of {}:".format(args.boolean_methyl_threshold))
+    log("Boolean accuracies based on threshold of T{}/Q{}:".format(args.boolean_truth_methyl_threshold, args.boolean_query_methyl_threshold))
     log("\tTP: {}".format(threshold_tp))
     log("\tFP: {}".format(threshold_fp))
     log("\tFN: {}".format(threshold_fn))
     log("\tTN: {}".format(threshold_tn))
     log("\tPrecision:   {}".format(threshold_tp / max(1, threshold_tp + threshold_fp)))
     log("\tRecall:      {}".format(threshold_tp / max(1, threshold_tp + threshold_fn)))
-    log("\tSensitivity: {}".format(threshold_tn / max(1, threshold_tn + threshold_fp)))
+    log("\tSpecificity: {}".format(threshold_tn / max(1, threshold_tn + threshold_fp)))
     if len(total_percentages_off) > 0:
         log("Accuracies based off distance (T-Q):")
         log("\tMean distance: {}".format(np.mean(total_percentages_off)))
@@ -384,8 +397,10 @@ def main():
     if args.plot:
         log("Plotting data")
         plot_jointplot_reg(truth_query_pairs, output_base=output_base)
+        sys.exit()
         plot_jointplot_hist(truth_query_pairs, output_base=output_base)
         plot_jointplot_hist(truth_query_pairs, output_base=output_base, bins=10)
+        plot_jointplot_hist(truth_query_pairs, output_base=output_base, bins=20)
         plot_truth_query_heatmap(truth_query_pairs, output_base=output_base)
 
     # write
