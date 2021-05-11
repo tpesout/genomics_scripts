@@ -15,7 +15,7 @@ SAMPLE = "Sample"
 SEQUENCE_IDENTITY = "Sequence Identity"
 ALIGNMENT_IDENTITY = "Alignment Identity"
 
-READ_LENGTH_GRANULARITY = 100
+READ_LENGTH_GRANULARITY = 200
 
 def parse_args(args = None):
     parser = argparse.ArgumentParser("Plots information from margin's calcLocalPhasingCorrectness ")
@@ -45,6 +45,8 @@ def main():
             id = args.identifiers[i]
         id_list.append(id)
 
+        print("Reading {} with ID {}".format(csv, id))
+
         with open(csv) as fin:
             read_lengths = defaultdict(lambda: 0)
             for j, line in enumerate(fin):
@@ -65,7 +67,7 @@ def main():
 
                 # read length
                 length = abs(int(line[4]) - int(line[3]))
-                read_lengths[int(length/READ_LENGTH_GRANULARITY)] += 1
+                read_lengths[int(round(length/READ_LENGTH_GRANULARITY))] += 1
 
             color = next(colors)
             total_coverage = 0
@@ -78,14 +80,14 @@ def main():
                 ax.hlines(y=curr_len*READ_LENGTH_GRANULARITY/1000, xmin=total_coverage/1000000.0, xmax=new_total_coverage/1000000.0, color=color)
 
                 if (first):
-                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/1000, total_coverage, new_total_coverage, alpha=.5,
+                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/1000, total_coverage/1000000.0, new_total_coverage/1000000.0, alpha=.5,
                                color=color, label=id)
-                    ax.vlines(new_total_coverage, curr_len*READ_LENGTH_GRANULARITY/1000, (curr_len-1)*READ_LENGTH_GRANULARITY/1000, alpha=.5, color=color)
+                    ax.vlines(new_total_coverage/1000000.0, curr_len*READ_LENGTH_GRANULARITY/1000, (curr_len-1)*READ_LENGTH_GRANULARITY/1000, alpha=.5, color=color)
                     first = False
                 else:
-                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/1000, total_coverage, new_total_coverage, alpha=.5,
+                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/1000, total_coverage/1000000.0, new_total_coverage/1000000.0, alpha=.5,
                                color=color)
-                    ax.vlines(new_total_coverage, curr_len*READ_LENGTH_GRANULARITY/1000, (curr_len-1)*READ_LENGTH_GRANULARITY/1000, alpha=.5, color=color)
+                    ax.vlines(new_total_coverage/1000000.0, curr_len*READ_LENGTH_GRANULARITY/1000, (curr_len-1)*READ_LENGTH_GRANULARITY/1000, alpha=.5, color=color)
 
                 total_coverage = new_total_coverage
                 curr_len -= 1
@@ -97,6 +99,7 @@ def main():
     plt.show()
     plt.close()
 
+    print("Plotting identity violins")
 
 
     columns = [SAMPLE, SEQUENCE_IDENTITY, ALIGNMENT_IDENTITY]
