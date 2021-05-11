@@ -16,6 +16,8 @@ SEQUENCE_IDENTITY = "Sequence Identity"
 ALIGNMENT_IDENTITY = "Alignment Identity"
 
 READ_LENGTH_GRANULARITY = 200
+KB = 1000
+GB = 1000000000
 
 def parse_args(args = None):
     parser = argparse.ArgumentParser("Plots information from margin's calcLocalPhasingCorrectness ")
@@ -75,19 +77,18 @@ def main():
             first = True
             while curr_len > 0:
 
-                current_len_sequence = curr_len * read_lengths[curr_len]
+                current_len_sequence = curr_len * READ_LENGTH_GRANULARITY * read_lengths[curr_len]
                 new_total_coverage = total_coverage + current_len_sequence
-                ax.hlines(y=curr_len*READ_LENGTH_GRANULARITY/1000, xmin=total_coverage/1000000.0, xmax=new_total_coverage/1000000.0, color=color)
 
                 if (first):
-                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/1000, total_coverage/1000000.0, new_total_coverage/1000000.0, alpha=.5,
+                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/KB, total_coverage/GB, new_total_coverage/GB, alpha=.5,
                                color=color, label=id)
-                    ax.vlines(new_total_coverage/1000000.0, curr_len*READ_LENGTH_GRANULARITY/1000, (curr_len-1)*READ_LENGTH_GRANULARITY/1000, alpha=.5, color=color)
+                    ax.vlines(new_total_coverage/GB, curr_len*READ_LENGTH_GRANULARITY/KB, (curr_len-1)*READ_LENGTH_GRANULARITY/KB, alpha=.5, color=color)
                     first = False
                 else:
-                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/1000, total_coverage/1000000.0, new_total_coverage/1000000.0, alpha=.5,
+                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/KB, total_coverage/GB, new_total_coverage/GB, alpha=.5,
                                color=color)
-                    ax.vlines(new_total_coverage/1000000.0, curr_len*READ_LENGTH_GRANULARITY/1000, (curr_len-1)*READ_LENGTH_GRANULARITY/1000, alpha=.5, color=color)
+                    ax.vlines(new_total_coverage/GB, curr_len*READ_LENGTH_GRANULARITY/KB, (curr_len-1)*READ_LENGTH_GRANULARITY/KB, alpha=.5, color=color)
 
                 total_coverage = new_total_coverage
                 curr_len -= 1
@@ -100,26 +101,20 @@ def main():
     plt.close()
 
     print("Plotting identity violins")
-
-
     columns = [SAMPLE, SEQUENCE_IDENTITY, ALIGNMENT_IDENTITY]
     median = np.median(list(map(lambda x: x[2], all_identities)))
     mean = np.mean(list(map(lambda x: x[2], all_identities)))
 
     fig, ax = plt.subplots(figsize=(3*len(id_list), 6))
     df = pandas.DataFrame(all_identities, columns=columns)
-    ax = sns.violinplot(x=SAMPLE, y=ALIGNMENT_IDENTITY,
+    ax = sns.violinplot(ax=ax, x=SAMPLE, y=ALIGNMENT_IDENTITY,
                         data=df, order=id_list, linewidth=0)
 
     ax.annotate("Median: {:.5f}".format(median), xy=(-0.25, median+.005), color='black', size=12, fontweight='bold', font='Courier New')
     ax.axhline(median, color='black', lw=2, linestyle='dashed')
     ax.annotate("Mean:   {:.5f}".format(mean), xy=(-0.25, mean-.015), color='black', size=12, fontweight='bold', font='Courier New')
     ax.axhline(mean, color='black', lw=2, linestyle='dotted')
-
     ax.set_ylim(0.6, 1.025)
-
-    plt.legend()
-
     plt.savefig("{}.identity.png".format(args.figure_name))
     plt.show()
 
