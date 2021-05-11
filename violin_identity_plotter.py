@@ -33,9 +33,9 @@ def parse_args(args = None):
 
 def main():
     args = parse_args()
-    # read_lengths = defaultdict(lambda: defaultdict(lambda: 0))
     id_list = []
     all_identities = list()
+    max_read_length = 0
 
     # for read length plot
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -74,6 +74,7 @@ def main():
             color = next(colors)
             total_coverage = 0
             curr_len = max(read_lengths.keys())
+            max_read_length = max([curr_len, max_read_length])
             first = True
             while curr_len > 0:
 
@@ -81,21 +82,23 @@ def main():
                 new_total_coverage = total_coverage + current_len_sequence
 
                 if (first):
-                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/KB, total_coverage/GB, new_total_coverage/GB, alpha=.5,
+                    ax.vlines(curr_len*READ_LENGTH_GRANULARITY/KB, total_coverage/GB, new_total_coverage/GB, alpha=.5,
                                color=color, label=id)
-                    ax.vlines(new_total_coverage/GB, curr_len*READ_LENGTH_GRANULARITY/KB, (curr_len-1)*READ_LENGTH_GRANULARITY/KB, alpha=.5, color=color)
+                    ax.hlines(new_total_coverage/GB, curr_len*READ_LENGTH_GRANULARITY/KB, (curr_len-1)*READ_LENGTH_GRANULARITY/KB, alpha=.5, color=color)
                     first = False
                 else:
-                    ax.hlines(curr_len*READ_LENGTH_GRANULARITY/KB, total_coverage/GB, new_total_coverage/GB, alpha=.5,
+                    ax.vlines(curr_len*READ_LENGTH_GRANULARITY/KB, total_coverage/GB, new_total_coverage/GB, alpha=.5,
                                color=color)
-                    ax.vlines(new_total_coverage/GB, curr_len*READ_LENGTH_GRANULARITY/KB, (curr_len-1)*READ_LENGTH_GRANULARITY/KB, alpha=.5, color=color)
+                    ax.hlines(new_total_coverage/GB, curr_len*READ_LENGTH_GRANULARITY/KB, (curr_len-1)*READ_LENGTH_GRANULARITY/KB, alpha=.5, color=color)
 
                 total_coverage = new_total_coverage
                 curr_len -= 1
 
     plt.legend()
-    ax.set_xlabel("Cumulative Coverage (Gb)")
-    ax.set_ylabel("Read Length (kb)")
+    if max_read_length*READ_LENGTH_GRANULARITY > 100000:
+        ax.set_xlim(0, 100)
+    ax.set_ylabel("Total Aligned Sequence (Gb)")
+    ax.set_xlabel("Read Length (kb)")
     plt.savefig("{}.read_nx.png".format(args.figure_name))
     plt.show()
     plt.close()
