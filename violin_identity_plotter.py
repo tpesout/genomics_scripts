@@ -19,6 +19,16 @@ READ_LENGTH_GRANULARITY = 200
 KB = 1000
 GB = 1000000000
 
+PLOT_TO_PDF=True
+if PLOT_TO_PDF:
+    plt.style.use('ggplot')
+    text_fontsize = 8
+    # plt.rcParams['ytick.labelsize']=text_fontsize+4
+    plt.rcParams.update({'font.size': text_fontsize})
+    plt.rcParams['pdf.fonttype'] = 42
+    plt.switch_backend('agg')
+
+
 def parse_args(args = None):
     parser = argparse.ArgumentParser("Plots information from margin's calcLocalPhasingCorrectness ")
     parser.add_argument('--input', '-i', dest='input_csvs', default=None, required=True, type=str, action='append',
@@ -99,8 +109,11 @@ def main():
         ax.set_xlim(0, 100)
     ax.set_ylabel("Total Aligned Sequence (Gb)")
     ax.set_xlabel("Read Length (kb)")
-    plt.savefig("{}.read_nx.png".format(args.figure_name))
-    plt.show()
+    if PLOT_TO_PDF:
+        plt.savefig("{}.read_nx.pdf".format(args.figure_name), dpi=300)
+    else:
+        plt.savefig("{}.read_nx.png".format(args.figure_name))
+        plt.show()
     plt.close()
 
     print("Plotting identity violins")
@@ -113,13 +126,16 @@ def main():
     ax = sns.violinplot(ax=ax, x=SAMPLE, y=ALIGNMENT_IDENTITY,
                         data=df, order=id_list, linewidth=0)
 
-    ax.annotate("Median: {:.5f}".format(median), xy=(-0.25, median+.005), color='black', size=12, fontweight='bold', font='Courier New')
     ax.axhline(median, color='black', lw=2, linestyle='dashed')
-    ax.annotate("Mean:   {:.5f}".format(mean), xy=(-0.25, mean-.015), color='black', size=12, fontweight='bold', font='Courier New')
     ax.axhline(mean, color='black', lw=2, linestyle='dotted')
+    # ax.annotate("Median: {:.5f}".format(median), xy=(-0.25, median+.005), color='black', size=12, fontweight='bold', font='Courier New')
+    # ax.annotate("Mean:   {:.5f}".format(mean), xy=(-0.25, mean-.015), color='black', size=12, fontweight='bold', font='Courier New')
     ax.set_ylim(0.6, 1.025)
-    plt.savefig("{}.identity.png".format(args.figure_name))
-    plt.show()
+    if PLOT_TO_PDF:
+        plt.savefig("{}.identity.pdf".format(args.figure_name), dpi=300)
+    else:
+        plt.savefig("{}.identity.png".format(args.figure_name))
+        plt.show()
 
 
 if __name__ == "__main__":
