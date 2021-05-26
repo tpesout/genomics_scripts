@@ -9,6 +9,14 @@ import collections
 import numpy as np
 import os
 
+plt.style.use('ggplot')
+text_fontsize = 8
+# plt.rcParams['ytick.labelsize']=text_fontsize+4
+plt.rcParams.update({'font.size': text_fontsize})
+plt.rcParams['pdf.fonttype'] = 42
+plt.switch_backend('agg')
+
+
 HP_TAG = "HP"
 UNCLASSIFIED = 'u'
 CORRECT = 'c'
@@ -35,6 +43,8 @@ def parse_args(args = None):
                        help='File describing chunk positions')
     parser.add_argument('--phaseset_bed', '-p', dest='phaseset_bed', default=None, required=False, type=str,
                        help='File describing phase sets')
+    parser.add_argument('--high_conf_bed', '-C', dest='high_conf_bed', default=None, required=False, type=str,
+                       help='If set, will only count regions within this BED file')
     parser.add_argument('--title', '-t', dest='title', default=None, required=False, type=str,
                        help='Figure title')
     parser.add_argument('--figure_name', '-f', dest='figure_name', default=None, required=False, type=str,
@@ -70,18 +80,20 @@ def plotOnlyNaturalSwitch(classification_data, args, phasesets=None, figName=Non
     right = []
     rong = []
     for i in range(start_idx, end_idx + 1):
-        x.append(i)
+        x.append(i / (1000000.0 / SPACING))
         ri = classification_data[i][CORRECT]
         ro = classification_data[i][INCORRECT]
 
-        right.append(ri)
-        rong.append(-1 * ro)
+        right.append(min(args.max_depth, ri))
+        rong.append(-1 * min(args.max_depth, ro))
 
     # get plots
-    fig, (ax1) = plt.subplots(nrows=1,ncols=1)
+    # fig, (ax1) = plt.subplots(nrows=1,ncols=1)
+    fig, (ax1) = plt.subplots(nrows=1,ncols=1, figsize=(8, 1.75))
     lw = .5
 
-    ax1.set_ylabel('Phasing Partitions')
+    ax1.set_ylabel('Concordant/Discordant\nDepth')
+    ax1.set_xlabel('Chr1 Positions (Mb)')
     ax1.fill_between(x, right, color='tab:red', linewidth=lw)
     ax1.fill_between(x, rong, color='tab:blue', linewidth=lw)
     ax1.set_ylim(-1 * args.max_depth, args.max_depth)
@@ -89,23 +101,29 @@ def plotOnlyNaturalSwitch(classification_data, args, phasesets=None, figName=Non
     if phasesets is not None:
         top = True
         for ps in phasesets:
-            start = ps[0] // SPACING
-            end = ps[1] // SPACING
-            ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
-                     color='black', alpha=.65, linewidth=2)
+            modifier = 1000000.0
+            start = ps[0] / modifier
+            end = ps[1] / modifier
+            # ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
+            #          color='black', alpha=.65, linewidth=2)
+            # start = ps[0] // SPACING
+            # end = ps[1] // SPACING
+            ps_range = list(map(lambda x: x/modifier, range(int(start*modifier), int(end*modifier), 10000)))
+            ax1.plot(ps_range, [2 if top else -2 for _ in ps_range], color='black', alpha=1, linewidth=.75)
             top = not top
 
     fig.tight_layout()
-    fig.set_size_inches(12, 3)
+    # fig.set_size_inches(12, 3)
     if figName is not None:
-        plt.savefig(figName)
+        plt.savefig(figName+".svg", format='svg', dpi=50)
+        plt.savefig(figName+".pdf", format='pdf', dpi=300)
     plt.show()
     plt.close()
 
 
 
 def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf=False, has_result_vcf=False, chunk_boundaries=None,
-            title=None):
+            title=None, highconf_positions=None):
     start_idx = min(classification_data.keys())
     end_idx = max(classification_data.keys())
     x = []
@@ -126,7 +144,13 @@ def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf
         unc = classification_data[i][UNCLASSIFIED]
         unk = classification_data[i][UNKNOWN]
         ht = classification_data[i][HETS]
+        if highconf_positions is not None and i not in highconf_positions:
+            ri = 0
+            ro = 0
+            unc = 0
+            unk = 0
         total = ri+ro+unc+unk
+
 
         right.append(ri)
         rong.append(-1 * ro)
@@ -140,8 +164,8 @@ def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf
         fn.append(classification_data[i][FN])
 
     # get averages
-    avg_unknown = np.mean(list(map(lambda y: y[1], filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, unknown)))))
-    avg_classified = np.mean(list(map(lambda y: y[1], filter(lambda x: total_reads[x[0]] != 0, zip(total_reads, total_classified)))))
+    avg_unknown = np.mean(list(map(lambda y: y[1], filter(lambda x: x[0] != 0, zip(total_reads, unknown)))))
+    avg_classified = np.mean(list(map(lambda y: y[1], filter(lambda x: x[0] != 0, zip(total_reads, total_classified)))))
     avg_total_reads = np.mean(list(filter(lambda x: x != 0, total_reads)))
     avg_correct = np.mean(list(filter(lambda x: x is not None, correct_ratio)))
     std_correct = np.std(list(filter(lambda x: x is not None, correct_ratio)))
@@ -198,6 +222,8 @@ def plottit(classification_data, args, figName=None, phasesets=None, has_het_vcf
         for ps in phasesets:
             start = ps[0] // SPACING
             end = ps[1] // SPACING
+            if not any([highconf_positions is None or x in highconf_positions for x in range(start, end) ]):
+                continue
             ax2.plot(range(start, end), [48 if top else 46 for _ in range(start, end)],
                      color='black', alpha=.65, linewidth=2)
             ax1.plot(range(start, end), [2 if top else -2 for _ in range(start, end)],
@@ -267,6 +293,17 @@ def read_phaseset_bed(bed_file):
             assert(len(parts) >= 3)
             phasesets.append((int(parts[1]), int(parts[2])))
     return phasesets
+
+
+def get_highconf_positions(bed_file):
+    highconf_positions = set()
+    with open(bed_file) as bed:
+        for line in bed:
+            parts = line.split("\t")
+            assert(len(parts) >= 3)
+            for i in range(int(int(parts[1]) / SPACING), int(int(parts[2]) / SPACING) + 1):
+                highconf_positions.add(i)
+    return highconf_positions
 
 
 def get_position_classifications(bam_location, truth_h1_ids, truth_h2_ids, region=None, verbose=True):
@@ -359,6 +396,10 @@ def main(args = None):
     # classifiy positions for reads
     position_classifications = get_position_classifications(args.margin_input_bam, truth_h1, truth_h2)
 
+    highconf_positions = None
+    if args.high_conf_bed is not None:
+        highconf_positions = get_highconf_positions(args.high_conf_bed)
+
     if args.het_vcf is not None:
         save_het_counts(args.het_vcf, position_classifications)
 
@@ -367,7 +408,7 @@ def main(args = None):
 
     figName = args.figure_name
     if figName is None and args.figure_name_bam:
-        figName = os.path.basename(args.margin_input_bam) + (".natural_switch" if args.only_natural_switch else "") + ".png"
+        figName = os.path.basename(args.margin_input_bam) + (".natural_switch" if args.only_natural_switch else ("" if args.high_conf_bed is None else ".highconf")) + ".png"
 
     phasesets = None if args.phaseset_bed is None else read_phaseset_bed(args.phaseset_bed)
     if (args.only_natural_switch):
@@ -375,7 +416,8 @@ def main(args = None):
     else:
         plottit(position_classifications, args=args, chunk_boundaries=chunk_boundaries, phasesets=phasesets, figName=figName,
                 has_het_vcf=args.het_vcf is not None, has_result_vcf=args.result_vcf is not None,
-                title=args.margin_input_bam if args.title is None and args.figure_name_bam else args.title)
+                title=args.margin_input_bam if args.title is None and args.figure_name_bam else args.title,
+                highconf_positions=highconf_positions)
 
 
 
