@@ -2,11 +2,11 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# plt.style.use('ggplot')
 text_fontsize = 8
-# # plt.rcParams['ytick.labelsize']=text_fontsize+4
-# plt.rcParams['pdf.fonttype'] = 42
-# plt.switch_backend('agg')
+plt.style.use('ggplot')
+# plt.rcParams['ytick.labelsize']=text_fontsize+4
+plt.rcParams['pdf.fonttype'] = 42
+plt.switch_backend('agg')
 
 SNP_INDEX=2
 INDEL_INDEX=0
@@ -19,10 +19,17 @@ PRECISION="METRIC.Precision"
 F1="METRIC.F1_Score"
 
 # read inputs / CSV from hap.py
-DATA = pd.read_csv("/home/tpesout/work/nicu/stratification_analysis/HG002_barcode_nobc_stratifications.csv")
+# DATA = pd.read_csv("HG002_barcode_nobc_stratifications.csv")
+# SAMPLES = {"Barcoded": "HG002_BC04", "Non-Barcoded": "HG002_No_BC"}
+# SAMPLE_KEYS = ["Barcoded", "Non-Barcoded"]
+# OUTPUT_NAME="./HG002_barcode_nobc_stratifications.pdf"
 
-SAMPLES = {"HG002 Barcoded": "HG002_BC04", "HG002 Non-Barcoded": "HG002_No_BC"}
-SAMPLE_KEYS = ["HG002 Barcoded", "HG002 Non-Barcoded"]
+DATA = pd.read_csv("pmd_v_orig/HG002_No_BC_orig_vs_pmdv.stratifications.csv")
+SAMPLES = {"Parabricks": "HG002_No_BC_orig", "Rows": "HG002_No_BC_pmdv"}
+SAMPLE_KEYS = ["Parabricks", "Rows"]
+OUTPUT_NAME="./HG002_orig_vs_pmd_stratifications.pdf"
+
+
 REGIONS = {
     "Homopolymer": "GRCh37_AllHomopolymers_gt6bp_imperfectgt10bp_slop5.bed.gz",
     "Non-Homopolymer": "GRCh37_notinAllHomopolymers_gt6bp_imperfectgt10bp_slop5.bed.gz",
@@ -34,12 +41,14 @@ REGIONS = {
 REGION_KEYS = ["All Regions", "Homopolymer", "Non-Homopolymer", "Difficult Regions", "Non-Difficult Regions", "Exons"]
 TYPE_KEYS = ["SNP","INDEL"]
 
-x_lims = [0.9, 0.9, 0.9, 0.5]
-x_tick_frq = [0.02, 0.02, 0.02, 0.1]
-x_lims = [0.6 for _ in REGION_KEYS]
-x_tick_frq = [0.1 for _ in REGION_KEYS]
+# x_lims = [0.9, 0.9, 0.9, 0.5]
+# x_tick_frq = [0.02, 0.02, 0.02, 0.1]
+x_lims_snp = [0.925 for _ in REGION_KEYS]
+x_tick_frq_snp = [0.015 for _ in REGION_KEYS]
+x_lims_indel = [0.0 for _ in REGION_KEYS]
+x_tick_frq_indel = [0.2 for _ in REGION_KEYS]
 
-fig, axes = plt.subplots(nrows=2, ncols=len(REGION_KEYS), figsize=(2*len(REGION_KEYS), 7))
+fig, axes = plt.subplots(nrows=2, ncols=len(REGION_KEYS), figsize=(2.5*len(REGION_KEYS), 7))
 
 for i in range(len(REGION_KEYS)):
     SNP_SCORES = [
@@ -71,83 +80,80 @@ for i in range(len(REGION_KEYS)):
     ind = np.arange(N)
     width = 0.98
 
-    bar_positions2 = [0, 1, 2, 3.25, 4.25, 5.25]
-    bar_positions1 = [7.25, 8.25, 9.25, 10.5, 11.5, 12.5]
-    # bar_positions2 = [0, 1, 2, 3.25, 4.25, 5.25, 6.50, 7.50, 8.50]
-    # bar_positions1 = [10.50, 11.50, 12.50, 13.75, 14.75, 15.75, 17, 18, 19]
+    bar_positions = [0, 1, 2, 3.25, 4.25, 5.25]
 
-    bar_positions1.reverse()
-    bar_positions2.reverse()
-    # HG003_SCORES.reverse()
-    # HG004_SCORES.reverse()
-    # HG003_COLOR.reverse()
-    # HG004_COLOR.reverse()
+    bar_positions.reverse()
     # no need to reverse the color
 
-    x_lim_min = x_lims[i]
     x_lim_max = 1.00
     first_start = 0
-    p1 = axes[i].barh(bar_positions1, SNP_SCORES, width, color = SNP_COLORS)
-    axes[i].hlines((bar_positions1[-1] + bar_positions2[0]) / 2, x_lim_min, x_lim_max, colors='black', linestyles='solid')
-    p2 = axes[i].barh(bar_positions2, INDEL_SCORES, width, color = INDEL_COLORS)
-
+    p1 = axes[0][i].barh(bar_positions, SNP_SCORES, width, color = SNP_COLORS)
+    p2 = axes[1][i].barh(bar_positions, INDEL_SCORES, width, color = INDEL_COLORS)
 
 
     # Add text labels
     # plt.text(6, -950, "Assembler", fontsize = text_fontsize+3)
-    axes[i].set_xlabel('Value', fontsize = text_fontsize + 1, color='black')
+    # axes[0][i].set_xlabel('Value', fontsize = text_fontsize + 1, color='black')
+    axes[1][i].set_xlabel('Value', fontsize = text_fontsize + 1, color='black')
     Category = ["R", "P", "F1"]
 
-
-    value_offset = (x_lim_max - x_lim_min) / 10
+    x_lim_min_snp = x_lims_snp[i]
+    value_offset_snp = (x_lim_max - x_lim_min_snp) / 10
     for ii, v in enumerate(SNP_SCORES):
-        # axes[i].text(text_start, bar_positions1[ii], Category[ii % 3], va='center', color='black', fontsize=text_fontsize)
-        if v < 0.91 and x_lim_min == 0.9 or v < 0.6:
+
+        if v < 0.962: # and x_lim_min_snp == 0.9 or v < 0.6:
             loc = v
             ha_align = 'left'
             va_align = 'center'
             color = 'black'
         else:
-            text_start = x_lim_min + (x_lim_max - x_lim_min) * 0.20
-            value_start = x_lim_min + (x_lim_max - x_lim_min) * 0.39
-            loc = v - value_offset
+            text_start = x_lim_min_snp + (x_lim_max - x_lim_min_snp) * 0.20
+            value_start = x_lim_min_snp + (x_lim_max - x_lim_min_snp) * 0.39
+            loc = v - value_offset_snp
             ha_align = 'right'
             va_align = 'center'
             color = 'white'
 
-        axes[i].text(v, bar_positions1[ii], str(v)[0:5], va=va_align, ha=ha_align, color=color, fontsize=text_fontsize)
+        axes[0][i].text(v, bar_positions[ii], str(v)[0:6], va=va_align, ha=ha_align, color=color, fontsize=text_fontsize)
+
+    x_lim_min_indel = x_lims_indel[i]
+    value_offset_indel = (x_lim_max - x_lim_min_indel) / 10
     for ii, v in enumerate(INDEL_SCORES):
-        # axes[i].text(text_start, bar_positions2[ii], Category[ii % 3], va='center', color='black', fontsize=text_fontsize)
-        if v < 0.91 and x_lim_min == 0.9 or v < 0.6:
+
+        if v < 0.91 and x_lim_min_indel == 0.9 or v < 0.6:
             loc = v
             ha_align = 'left'
             va_align = 'center'
             color = 'black'
         else:
-            text_start = x_lim_min + (x_lim_max - x_lim_min) * 0.20
-            value_start = x_lim_min + (x_lim_max - x_lim_min) * 0.39
-            loc = v - value_offset
+            text_start = x_lim_min_indel + (x_lim_max - x_lim_min_indel) * 0.20
+            value_start = x_lim_min_indel + (x_lim_max - x_lim_min_indel) * 0.39
+            loc = v - value_offset_indel
             ha_align = 'right'
             va_align = 'center'
             color = 'white'
-        axes[i].text(v, bar_positions2[ii], str(v)[0:5], va=va_align, ha=ha_align, color=color, fontsize=text_fontsize)
+        axes[1][i].text(v, bar_positions[ii], str(v)[0:6], va=va_align, ha=ha_align, color=color, fontsize=text_fontsize)
 
     if i == len(REGIONS) - 1:
         # caller_name_offser = x_lim_max + (0.08 * (1-x_lim_max)) # -0.13 for 0.0
         type_name_offset = x_lim_max + (0.10 * (1-x_lim_max)) # -0.07 for 0.0
-        axes[i].text(type_name_offset, bar_positions1[0] + ((bar_positions1[-1] - bar_positions1[0]) / 2), TYPE_KEYS[0], va='center', fontsize=text_fontsize, rotation=270)
-        axes[i].text(type_name_offset, bar_positions2[0] + ((bar_positions2[-1] - bar_positions2[0]) / 2), TYPE_KEYS[1], va='center', fontsize=text_fontsize, rotation=270)
+        axes[0][i].text(type_name_offset, bar_positions[0] + ((bar_positions[-1] - bar_positions[0]) / 2), TYPE_KEYS[0], va='center', fontsize=text_fontsize, rotation=270)
+        axes[1][i].text(type_name_offset, bar_positions[0] + ((bar_positions[-1] - bar_positions[0]) / 2), TYPE_KEYS[1], va='center', fontsize=text_fontsize, rotation=270)
 
     if i == 0:
         categories = SAMPLE_KEYS
-        mid_points = [bar_positions1[1], bar_positions1[4],
-                      bar_positions2[1], bar_positions2[4]]
+        mid_points = [bar_positions[1], bar_positions[4],
+                      bar_positions[1], bar_positions[4]]
         all_categories = categories + categories
-        axes[i].set_yticks(mid_points)
-        axes[i].set_yticklabels(all_categories, fontsize=text_fontsize+1, color='black')
+        axes[0][i].set_yticks(mid_points)
+        axes[0][i].set_yticklabels(all_categories, fontsize=text_fontsize+1, color='black', rotation=90, va='center')
+        axes[1][i].set_yticks(mid_points)
+        axes[1][i].set_yticklabels(all_categories, fontsize=text_fontsize+1, color='black', rotation=90, va='center')
     else:
-        axes[i].set_yticks([])
-        axes[i].set_yticklabels([])
+        axes[0][i].set_yticks([])
+        axes[0][i].set_yticklabels([])
+        axes[1][i].set_yticks([])
+        axes[1][i].set_yticklabels([])
 
     # Samples = ["ONT", "HG004"]
     # plt.text(bar_positions1[1], sample_name_offset, Samples[0], ha='center', color='black', fontsize=text_fontsize)
@@ -158,22 +164,34 @@ for i in range(len(REGION_KEYS)):
 
     categories = ["Recall", "Precision", "F1-Score"]
     if i == 0:
-        caller_name_offset = x_lim_min - (0.08 * (1-x_lim_max)) # -0.13 for 0.0
+        # caller_name_offset = x_lim_min - (0.08 * (1-x_lim_max)) # -0.13 for 0.0
 
         for ii, v in enumerate(SNP_SCORES):
-            axes[i].text(x_lim_min + 0.001, bar_positions2[ii], categories[ii % 3], color='white', va='center', ha='left', fontsize=text_fontsize)
-            axes[i].text(x_lim_min + 0.001, bar_positions1[ii], categories[ii % 3], color='white', va='center', ha='left', fontsize=text_fontsize)
+            axes[0][i].text(x_lim_min_snp + 0.001, bar_positions[ii], categories[ii % 3], color='white', va='center', ha='left', fontsize=text_fontsize)
+        for ii, v in enumerate(INDEL_SCORES):
+            axes[1][i].text(x_lim_min_indel + 0.001, bar_positions[ii], categories[ii % 3], color='white', va='center', ha='left', fontsize=text_fontsize)
 
-    axes[i].tick_params(axis=u'both', which=u'both',length=0)
-    axes[i].set_xlim(x_lim_min, x_lim_max)
-    axes[i].set_title(REGION_KEYS[i], fontsize=text_fontsize + 1)
+    axes[0][i].tick_params(axis=u'both', which=u'both',length=0)
+    axes[0][i].set_xlim(x_lim_min_snp, x_lim_max)
+    axes[0][i].set_title(REGION_KEYS[i], fontsize=text_fontsize + 1)
 
-    x_ticks = np.arange(x_lims[i] + x_tick_frq[i], 1.01, x_tick_frq[i] * 2)
-    x_lables = ["%.2lf" % round(x,2) for x in x_ticks]
-    axes[i].set_xticks(x_ticks)
-    axes[i].set_xticklabels(x_lables, fontsize=text_fontsize, color='black')
+    axes[1][i].tick_params(axis=u'both', which=u'both',length=0)
+    axes[1][i].set_xlim(x_lim_min_indel, x_lim_max)
+    # axes[1][i].set_title(REGION_KEYS[i], fontsize=text_fontsize + 1)
+
+    x_ticks_snp = np.arange(x_lims_snp[i] + x_tick_frq_snp[i], 1.01, x_tick_frq_snp[i] * 2)
+    x_lables_snp = ["%.2lf" % round(x,2) for x in x_ticks_snp]
+    axes[0][i].set_xticks(x_ticks_snp)
+    axes[0][i].set_xticklabels(x_lables_snp, fontsize=text_fontsize, color='black')
+
+    x_ticks_indel = np.arange(x_lims_indel[i] + x_tick_frq_indel[i], 1.01, x_tick_frq_indel[i] * 2)
+    x_lables_indel = ["%.2lf" % round(x,2) for x in x_ticks_indel]
+    axes[1][i].set_xticks(x_ticks_indel)
+    axes[1][i].set_xticklabels(x_lables_indel, fontsize=text_fontsize, color='black')
+
+
     # Save the figure
-plt.tight_layout()
+# plt.tight_layout()
 # plt.margins(0, 0)
 plt.show()
-# plt.savefig('./outputs/2b_Illumina_difficult.pdf', format='pdf', dpi=300)
+plt.savefig(OUTPUT_NAME, format='pdf', dpi=300)
