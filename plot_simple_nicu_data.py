@@ -86,6 +86,7 @@ def plot_simple_ratio(data, title, xlabel, ylabel, data_key, ylim=None, output_n
 
     ax1.scatter(range(len(xs)), ys, marker = "D", c=cm.rainbow(np.linspace(1, 0, len(xs))))
     ax1.axhline(np.mean(ys), linestyle='dashed', color = 'black')
+    print("Mean: {}".format(np.mean(ys)))
 
     plt.xticks(range(len(xs)), [x[6:] for x in xs])#, rotation = 45)
 

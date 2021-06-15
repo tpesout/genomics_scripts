@@ -19,15 +19,15 @@ PRECISION="METRIC.Precision"
 F1="METRIC.F1_Score"
 
 # read inputs / CSV from hap.py
-# DATA = pd.read_csv("HG002_barcode_nobc_stratifications.csv")
-# SAMPLES = {"Barcoded": "HG002_BC04", "Non-Barcoded": "HG002_No_BC"}
-# SAMPLE_KEYS = ["Barcoded", "Non-Barcoded"]
-# OUTPUT_NAME="./HG002_barcode_nobc_stratifications.pdf"
+DATA = pd.read_csv("bcrows_nobcrows_nobcpara/HG002_Stratifications.csv")
 
-DATA = pd.read_csv("pmd_v_orig/HG002_No_BC_orig_vs_pmdv.stratifications.csv")
-SAMPLES = {"Parabricks": "HG002_No_BC_orig", "Rows": "HG002_No_BC_pmdv"}
-SAMPLE_KEYS = ["Parabricks", "Rows"]
-OUTPUT_NAME="./HG002_orig_vs_pmd_stratifications.pdf"
+SAMPLES = {"Barcoded": "HG002_BC04_rows", "Non-Barcoded": "HG002_No_BC_rows"}
+SAMPLE_KEYS = ["Barcoded", "Non-Barcoded"]
+OUTPUT_NAME="./HG002_barcode_nobc_stratifications.pdf"
+
+# SAMPLES = {"Parabricks": "HG002_No_BC_parabricks", "Rows": "HG002_No_BC_rows"}
+# SAMPLE_KEYS = ["Parabricks", "Rows"]
+# OUTPUT_NAME="./HG002_parabricks_vs_rows_stratifications.pdf"
 
 
 REGIONS = {
