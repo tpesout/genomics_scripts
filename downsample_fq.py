@@ -120,16 +120,22 @@ def main():
         return True
 
     # preprocessing
+    is_fasta = False
     log("Preprocessing {}:".format(input))
     if len(filters) != 0: log("  Filters: {}".format(", ".join(filters)))
     all_read_lengths = list()
     filtered_read_lengths = list()
-    def handle_read_analysis(read, linenr):
+    def handle_read_analysis(read, linenr, is_fasta):
         # format sanity check
-        if not (read[0].startswith("@") and read[2].startswith("+") and
-                len(read[1]) == len(read[3])):
-            log("Error at approx line {} in {}: does not appear to be in FQ format.".format(linenr, input))
-            sys.exit(1)
+        if is_fasta:
+            if not read[0].startswith(">"):
+                log("Error at approx line {} in {}: does not appear to be in FASTA format.".format(linenr, input))
+                sys.exit(1)
+        else:
+            if not (read[0].startswith("@") and read[2].startswith("+") and
+                    len(read[1]) == len(read[3])):
+                log("Error at approx line {} in {}: does not appear to be in FQ format.".format(linenr, input))
+                sys.exit(1)
         all_read_lengths.append(len(read[1]))
         if filter_read(read):
             filtered_read_lengths.append(len(read[1]))
@@ -139,11 +145,17 @@ def main():
     linenr = 0
     with open(input) as instream:
         for line in instream:
+            if linenr == 0:
+                if line[0] == "@":
+                    log("Input is FASTQ")
+                elif line[0] == ">":
+                    log("Input is FASTA")
+                    is_fasta = True
             linenr += 1
             current_read.append(line.strip())
             # have we finished the current read?
-            if len(current_read) == 4:
-                handle_read_analysis(current_read, linenr)
+            if len(current_read) == (2 if is_fasta else 4):
+                handle_read_analysis(current_read, linenr, is_fasta)
                 current_read = list()
 
     # stats
