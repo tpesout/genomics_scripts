@@ -157,6 +157,13 @@ def main():
         log("    Med length:  {}".format(int(np.median(read_lengths))))
         log("    Min length:  {}".format(min(read_lengths)))
         log("    Max length:  {}".format(max(read_lengths)))
+        half_total_read_length = sum(read_lengths) / 2
+        read_lengths.sort()
+        for l in read_lengths:
+            half_total_read_length -= l
+            if half_total_read_length <= 0:
+                log("    Read N50:    {}".format(l))
+                break
         if (args.stats_only):
             log("    Lengths in log space:")
             bin_and_print_data(read_lengths, log_base=2)
