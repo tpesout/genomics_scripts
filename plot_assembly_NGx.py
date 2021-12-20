@@ -14,7 +14,7 @@ import collections
 REF_LINEWIDTH=2
 LINEWIDTH=1
 REF_ALPHA=1.0
-ALPHA=.5
+ALPHA=.33
 
 def parse_args(args = None):
     parser = argparse.ArgumentParser("Plots information from haplotagging_stats tsv")
@@ -44,6 +44,14 @@ def get_length_mod(max_length):
     return 1000000000.0, "Gb"
 
 
+def get_color(filename):
+    if "maternal" in filename:
+        return "darkred"
+    if "paternal" in filename:
+        return "darkblue"
+    return "black"
+
+
 def main():
     args = parse_args()
     files = glob(args.input_fai_glob)
@@ -62,11 +70,14 @@ def main():
     # for tracking all lengths
     all_file_lengths = list()
     max_contig_length = 0
+    index_to_filename = dict()
+
 
     # get all read data
-    for file in files:
+    for i, file in enumerate(files):
         file_lengths = list()
         all_file_lengths.append(file_lengths)
+        index_to_filename[i] = file
         with open(file) as file_in:
             for line in file_in:
                 parts = line.split()
@@ -82,6 +93,7 @@ def main():
     read_length_mod, read_length_mod_id = get_length_mod(max_contig_length)
     cumulative_length_mod, cumulative_length_mod_id = get_length_mod(args.genome_size)
 
+    log("\nPlotting Contig Lengths")
     for i, file_lengths in enumerate(all_file_lengths):
         is_reference = args.reference_fai is not None and i == 0
         file_lengths.sort(reverse=True)
@@ -94,9 +106,9 @@ def main():
             new_total = total+length
             if prev_length is not None and prev_length != length:
                 ax1.vlines(total / cumulative_length_mod, prev_length / read_length_mod, length / read_length_mod,
-                           alpha=REF_ALPHA if is_reference else ALPHA, color="black", linewidth=REF_LINEWIDTH if is_reference else LINEWIDTH)
+                           alpha=REF_ALPHA if is_reference else ALPHA, color=get_color(index_to_filename[i]), linewidth=REF_LINEWIDTH if is_reference else LINEWIDTH)
             ax1.hlines(length / read_length_mod, total / cumulative_length_mod, new_total / cumulative_length_mod,
-                       alpha=REF_ALPHA if is_reference else ALPHA, color="black", linewidth=REF_LINEWIDTH if is_reference else LINEWIDTH)
+                       alpha=REF_ALPHA if is_reference else ALPHA, color=get_color(index_to_filename[i]), linewidth=REF_LINEWIDTH if is_reference else LINEWIDTH)
 
             # iterate
             prev_length = length
@@ -105,19 +117,22 @@ def main():
                 n50 = length
                 if not is_reference:
                     n50s.append(n50)
+                    log("\tFile {} got N50 of {}".format(index_to_filename[i], n50))
 
         # finish
         if prev_length is not None:
             ax1.vlines(total / cumulative_length_mod, prev_length / read_length_mod, 0,
-                       alpha=REF_ALPHA if is_reference else ALPHA, color="black",
+                       alpha=REF_ALPHA if is_reference else ALPHA, color=get_color(index_to_filename[i]),
                        linewidth=REF_LINEWIDTH if is_reference else LINEWIDTH)
         if total >= args.genome_size:
-            log("File {}/{} has total length {} >= genome size {}".format(i, len(all_file_lengths), total, args.genome_size))
-            
+            log("\tFile {} has total length {} >= genome size {}".format(i, total, args.genome_size))
+
         #n50 edge case
         if n50 is None and not is_reference:
             n50s.append(0)
+            log("\tFile {} got N50 of {}".format(index_to_filename[i], 0))
 
+    log("")
     avg_n50 = np.mean(n50s)
     log("Average N50: {}".format(avg_n50))
     log("Genome Size: {}".format(args.genome_size))
@@ -132,8 +147,12 @@ def main():
     ax1.set_ylabel("Read Length ({})".format(read_length_mod_id))
     ax1.set_xlabel("Cumulative Coverage ({})".format(cumulative_length_mod_id))
 
+    fig.tight_layout()
+    fig.set_size_inches(12, 12)
+
     if args.figure_name is not None:
-        plt.savefig(args.figure_name)
+        plt.savefig(args.figure_name+".png", format='png', dpi=50)
+        plt.savefig(args.figure_name+".pdf", format='pdf', dpi=300)
     plt.show()
 
 
