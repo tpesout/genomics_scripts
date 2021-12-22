@@ -3,7 +3,7 @@ MAINTAINER Trevor Pesout, tpesout@ucsc.edu
 
 
 RUN apt-get update && \
-    DEBIAN_FRONTEND="noninteractive" apt-get install -y vim git wget build-essential python3 python3-dev python3-pip python3-matplotlib
+    DEBIAN_FRONTEND="noninteractive" apt-get install -y vim git wget build-essential python3 python3-dev python3-pip python3-matplotlib tabix
 
 RUN pip3 install numpy matplotlib cython==0.29
 
